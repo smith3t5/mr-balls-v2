@@ -19,9 +19,9 @@ database_id = "3ecfe27a-d96b-461d-937d-f047b77cd9d5"
 [vars]
 ENVIRONMENT = "production"
 
-# Triggers (lowercase for cron triggers)
-[triggers]
-crons = ["0 0 * * *"]
+# NOTE: Cron triggers for Pages need to be set up via Cloudflare Dashboard
+# or using a separate Worker. Cannot be configured in wrangler.toml for Pages.
+# To set up: Dashboard → Workers & Pages → Your Project → Settings → Triggers
 
 # Secrets (add via: wrangler secret put <KEY>)
 # ODDS_API_KEY - ff9a8a23c60b12443abca977ec686d1a
