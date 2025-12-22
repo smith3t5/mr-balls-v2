@@ -1,0 +1,661 @@
+// Smart Analytics Engine for M.R. B.A.L.L.S. 2.0
+import type {
+  GeneratorCriteria,
+  BetLeg,
+  GameData,
+  WeatherData,
+  AnalyticsFactor,
+  Sport,
+  Market,
+} from '@/types';
+import { generateDraftKingsLink } from './draftkings-links';
+import { isMarketAllowedInState } from './state-regulations';
+
+export interface ScoredBet extends BetLeg {
+  edgeScore: number;
+  confidenceScore: number;
+  factors: AnalyticsFactor[];
+  rawData: any; // Store original odds API data
+}
+
+export class AnalyticsEngine {
+  /**
+   * Generate smart parlay based on criteria
+   */
+  async generateSmartParlay(
+    criteria: GeneratorCriteria,
+    games: GameData[],
+    stateCode?: string
+  ): Promise<{ legs: ScoredBet[]; confidence: number; avgEdge: number }> {
+    // 1. Generate all possible bet options
+    const allBets = this.generateBetOptions(games, criteria, stateCode);
+
+    // 2. Score each bet
+    const scoredBets = await Promise.all(
+      allBets.map((bet) => this.scoreBet(bet, games))
+    );
+
+    // 3. Filter by minimum edge
+    const valueBets = scoredBets.filter(
+      (bet) => bet.edgeScore >= criteria.min_edge
+    );
+
+    if (valueBets.length === 0) {
+      throw new Error('No value bets found with current criteria');
+    }
+
+    // 4. Sort by confidence
+    valueBets.sort((a, b) => b.confidenceScore - a.confidenceScore);
+
+    // 5. Build optimal parlay
+    const parlay = this.buildParlay(
+      valueBets,
+      criteria.legs,
+      criteria.sgp_mode,
+      criteria.locked
+    );
+
+    // Check if we got enough legs
+    if (parlay.length < criteria.legs) {
+      throw new Error(
+        `Only found ${parlay.length} suitable bets (requested ${criteria.legs}). Try lowering min edge, expanding odds range, or enabling SGP mode.`
+      );
+    }
+
+    // 6. Calculate aggregate stats
+    const avgEdge =
+      parlay.reduce((sum, leg) => sum + leg.edgeScore, 0) / parlay.length;
+    const confidence =
+      parlay.reduce((sum, leg) => sum + leg.confidenceScore, 0) /
+      parlay.length;
+
+    return {
+      legs: parlay,
+      confidence,
+      avgEdge,
+    };
+  }
+
+  /**
+   * Generate all possible bet options from games
+   */
+  private generateBetOptions(
+    games: GameData[],
+    criteria: GeneratorCriteria,
+    stateCode?: string
+  ): Partial<ScoredBet>[] {
+    const bets: Partial<ScoredBet>[] = [];
+
+    for (const game of games) {
+      const dk = game.bookmakers.find((b) => b.key === 'draftkings');
+      if (!dk) continue;
+
+      for (const market of dk.markets) {
+        // Skip if market not requested
+        if (!this.isMarketRequested(market.key, criteria)) continue;
+
+        // Skip if market not allowed in user's state
+        if (!isMarketAllowedInState(market.key, game.sport, stateCode)) continue;
+
+        for (const outcome of market.outcomes) {
+          // Check odds range
+          if (
+            outcome.price < criteria.odds_min ||
+            outcome.price > criteria.odds_max
+          ) {
+            continue;
+          }
+
+          const bet: Partial<ScoredBet> = {
+            id: crypto.randomUUID(),
+            sport: game.sport,
+            event_id: game.id,
+            event_name: `${game.away_team} @ ${game.home_team}`,
+            commence_time: game.commence_time,
+            market: market.key,
+            pick: this.formatOutcomeLabel(market.key, outcome),
+            odds: outcome.price,
+            participant: outcome.participant || null,
+            point: outcome.point || null,
+            bet_kind: this.classifyBetKind(market.key),
+            bet_tag: this.classifyBetTag(market.key, outcome),
+            dk_link: generateDraftKingsLink(
+              game.sport,
+              game.home_team,
+              game.away_team,
+              game.commence_time
+            ),
+            rawData: { game, outcome, market },
+          };
+
+          bets.push(bet);
+        }
+      }
+    }
+
+    return bets;
+  }
+
+  /**
+   * Score a bet based on multiple factors
+   */
+  private async scoreBet(
+    bet: Partial<ScoredBet>,
+    allGames: GameData[]
+  ): Promise<ScoredBet> {
+    const game = allGames.find((g) => g.id === bet.event_id);
+    if (!game) {
+      throw new Error(`Game not found: ${bet.event_id}`);
+    }
+
+    const factors: AnalyticsFactor[] = [];
+
+    // 1. Calculate line value (compare to market consensus)
+    const lineValue = this.calculateLineValue(bet, game);
+    if (lineValue.impact > 0) {
+      factors.push(lineValue);
+    }
+
+    // 2. Sharp money analysis (simulated for now)
+    const sharpMoney = this.analyzeSharpMoney(bet, game);
+    if (Math.abs(sharpMoney.impact) > 1) {
+      factors.push(sharpMoney);
+    }
+
+    // 3. Weather impact (if applicable)
+    if (game.weather && this.isOutdoorSport(bet.sport!)) {
+      const weather = this.analyzeWeather(bet, game.weather);
+      if (Math.abs(weather.impact) > 1) {
+        factors.push(weather);
+      }
+    }
+
+    // 4. Situational factors
+    const situational = this.analyzeSituational(bet, game);
+    factors.push(...situational);
+
+    // 5. Historical trends (would need database of historical data)
+    // TODO: Implement when historical data available
+
+    // 6. Key numbers analysis (NFL 3/7, NBA 2/3)
+    if (bet.point !== null && bet.bet_kind === 'side') {
+      const keyNumber = this.analyzeKeyNumbers(bet);
+      if (keyNumber) factors.push(keyNumber);
+    }
+
+    // Calculate aggregate scores
+    const edgeScore = this.calculateEdgeScore(factors);
+    const confidenceScore = this.calculateConfidenceScore(factors, bet);
+
+    return {
+      ...(bet as ScoredBet),
+      edgeScore,
+      confidenceScore,
+      factors,
+      analytics: {
+        edge: edgeScore,
+        sharp_money_pct: null, // Would come from real sharp money API
+        public_money_pct: null,
+        line_movement: null,
+        factors,
+      },
+      status: 'pending',
+      locked_by_user: false,
+      bet_id: '',
+    };
+  }
+
+  /**
+   * Calculate line value by comparing to consensus
+   */
+  private calculateLineValue(
+    bet: Partial<ScoredBet>,
+    game: GameData
+  ): AnalyticsFactor {
+    // Get all books' odds for this market/outcome
+    const allOdds: number[] = [];
+    for (const book of game.bookmakers) {
+      const market = book.markets.find((m) => m.key === bet.market);
+      if (!market) continue;
+
+      const outcome = market.outcomes.find((o) => {
+        if (bet.point !== undefined) {
+          return o.name === bet.rawData.outcome.name && o.point === bet.point;
+        }
+        return o.name === bet.rawData.outcome.name;
+      });
+
+      if (outcome) allOdds.push(outcome.price);
+    }
+
+    if (allOdds.length < 2) {
+      return {
+        type: 'neutral',
+        category: 'value',
+        description: 'Insufficient market data',
+        impact: 0,
+      };
+    }
+
+    // Calculate average (consensus)
+    const avgOdds = allOdds.reduce((a, b) => a + b, 0) / allOdds.length;
+
+    // Convert to implied probability
+    const betProb = this.oddsToImpliedProbability(bet.odds!);
+    const consensusProb = this.oddsToImpliedProbability(avgOdds);
+
+    // Calculate edge as percentage difference
+    const edge = ((consensusProb - betProb) / betProb) * 100;
+
+    const impact = edge * 0.5; // Scale to 0-10
+
+    return {
+      type: edge > 0 ? 'positive' : edge < -2 ? 'negative' : 'neutral',
+      category: 'value',
+      description:
+        edge > 2
+          ? `${edge.toFixed(1)}% better value than market consensus`
+          : edge < -2
+            ? `${Math.abs(edge).toFixed(1)}% worse value than consensus`
+            : 'Fair market value',
+      impact: Math.min(Math.max(impact, -5), 5),
+    };
+  }
+
+  /**
+   * Analyze sharp money movement (simulated)
+   */
+  private analyzeSharpMoney(
+    bet: Partial<ScoredBet>,
+    game: GameData
+  ): AnalyticsFactor {
+    // In production, this would call a sharp money API or track line movements
+    // For now, we'll use DraftKings vs Pinnacle as proxy (Pinnacle = sharp)
+
+    const pinnacle = game.bookmakers.find((b) => b.key === 'pinnacle');
+    const draftkings = game.bookmakers.find((b) => b.key === 'draftkings');
+
+    if (!pinnacle || !draftkings) {
+      return {
+        type: 'neutral',
+        category: 'sharp',
+        description: 'No sharp book comparison available',
+        impact: 0,
+      };
+    }
+
+    // Compare odds between sharp (Pinnacle) and public (DK)
+    // If DK has better odds than Pinnacle, public is overloading one side
+    const pinnacleMarket = pinnacle.markets.find((m) => m.key === bet.market);
+    const dkMarket = draftkings.markets.find((m) => m.key === bet.market);
+
+    if (!pinnacleMarket || !dkMarket) {
+      return {
+        type: 'neutral',
+        category: 'sharp',
+        description: 'Market not available at both books',
+        impact: 0,
+      };
+    }
+
+    const pinnacleOutcome = pinnacleMarket.outcomes.find(
+      (o) => o.name === bet.rawData.outcome.name
+    );
+    const dkOutcome = dkMarket.outcomes.find(
+      (o) => o.name === bet.rawData.outcome.name
+    );
+
+    if (!pinnacleOutcome || !dkOutcome) {
+      return {
+        type: 'neutral',
+        category: 'sharp',
+        description: 'Outcome not found',
+        impact: 0,
+      };
+    }
+
+    // If DK odds are better (higher), public is on opposite side = good for us
+    const oddsGap = dkOutcome.price - pinnacleOutcome.price;
+
+    let description: string;
+    let impact: number;
+    let type: 'positive' | 'negative' | 'neutral';
+
+    if (oddsGap > 10) {
+      description = 'Sharp money likely on this side (DK adjusting line)';
+      impact = 3;
+      type = 'positive';
+    } else if (oddsGap < -10) {
+      description = 'Public heavy on this side (worse value)';
+      impact = -2;
+      type = 'negative';
+    } else {
+      description = 'Balanced action';
+      impact = 0;
+      type = 'neutral';
+    }
+
+    return { type, category: 'sharp', description, impact };
+  }
+
+  /**
+   * Analyze weather impact
+   */
+  private analyzeWeather(
+    bet: Partial<ScoredBet>,
+    weather: WeatherData
+  ): AnalyticsFactor {
+    let impact = 0;
+    const descriptions: string[] = [];
+
+    // Wind
+    if (weather.wind_speed > 20) {
+      if (bet.bet_kind === 'total' && bet.bet_tag === 'under') {
+        impact += 2.5;
+        descriptions.push(`${weather.wind_speed}mph winds favor under`);
+      } else if (bet.market?.includes('pass')) {
+        impact -= 2;
+        descriptions.push(`${weather.wind_speed}mph winds hurt passing`);
+      }
+    } else if (weather.wind_speed > 15) {
+      if (bet.bet_kind === 'total' && bet.bet_tag === 'under') {
+        impact += 1.5;
+        descriptions.push(`${weather.wind_speed}mph winds slightly favor under`);
+      }
+    }
+
+    // Temperature
+    if (weather.temperature < 32) {
+      if (bet.bet_kind === 'total' && bet.bet_tag === 'under') {
+        impact += 1;
+        descriptions.push(`Cold weather (${weather.temperature}°F) favors defense`);
+      }
+    }
+
+    // Precipitation
+    if (weather.precipitation > 60) {
+      if (bet.bet_kind === 'total' && bet.bet_tag === 'under') {
+        impact += 2;
+        descriptions.push(`Heavy rain (${weather.precipitation}%) favors run game`);
+      } else if (bet.market?.includes('pass') || bet.market?.includes('reception')) {
+        impact -= 1.5;
+        descriptions.push(`Rain hurts passing game`);
+      }
+    }
+
+    const type =
+      impact > 1 ? 'positive' : impact < -1 ? 'negative' : 'neutral';
+
+    return {
+      type,
+      category: 'weather',
+      description: descriptions.join('; ') || 'Good conditions',
+      impact,
+    };
+  }
+
+  /**
+   * Analyze situational factors
+   */
+  private analyzeSituational(
+    bet: Partial<ScoredBet>,
+    game: GameData
+  ): AnalyticsFactor[] {
+    const factors: AnalyticsFactor[] = [];
+
+    // Time of game (primetime, early west coast, etc)
+    const gameHour = new Date(game.commence_time).getUTCHours();
+
+    if (bet.sport === 'americanfootball_nfl') {
+      // Thursday night games tend to be lower scoring
+      const dayOfWeek = new Date(game.commence_time).getUTCDay();
+      if (dayOfWeek === 4) {
+        // Thursday
+        if (bet.bet_kind === 'total' && bet.bet_tag === 'under') {
+          factors.push({
+            type: 'positive',
+            category: 'situation',
+            description: 'Thursday night games average 3pts lower than season avg',
+            impact: 1.5,
+          });
+        }
+      }
+
+      // Division games tend to be tighter
+      // (Would need team data to determine)
+    }
+
+    if (
+      bet.sport === 'basketball_nba' ||
+      bet.sport === 'basketball_ncaab'
+    ) {
+      // Back-to-back games (would need schedule data)
+      // For now, placeholder
+    }
+
+    // Playoff implications (would need standings data)
+
+    return factors;
+  }
+
+  /**
+   * Analyze key numbers
+   */
+  private analyzeKeyNumbers(bet: Partial<ScoredBet>): AnalyticsFactor | null {
+    if (bet.sport === 'americanfootball_nfl' && bet.point !== null) {
+      const point = Math.abs(bet.point);
+
+      if (point === 3) {
+        return {
+          type: 'positive',
+          category: 'value',
+          description: 'Landing on key number 3 (most common NFL margin)',
+          impact: 2,
+        };
+      } else if (point === 7) {
+        return {
+          type: 'positive',
+          category: 'value',
+          description: 'Landing on key number 7 (touchdown)',
+          impact: 1.5,
+        };
+      } else if (point === 2.5 || point === 3.5) {
+        return {
+          type: 'positive',
+          category: 'value',
+          description: `Crossing key number 3`,
+          impact: 1,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Calculate aggregate edge score
+   */
+  private calculateEdgeScore(factors: AnalyticsFactor[]): number {
+    const weights = {
+      value: 0.35,
+      sharp: 0.25,
+      weather: 0.15,
+      situation: 0.15,
+      trend: 0.10,
+      matchup: 0.10,
+    };
+
+    let totalImpact = 0;
+    let totalWeight = 0;
+
+    for (const factor of factors) {
+      const weight = weights[factor.category] || 0.1;
+      totalImpact += factor.impact * weight;
+      totalWeight += weight;
+    }
+
+    return totalWeight > 0 ? totalImpact / totalWeight : 0;
+  }
+
+  /**
+   * Calculate confidence score (0-10)
+   */
+  private calculateConfidenceScore(
+    factors: AnalyticsFactor[],
+    bet: Partial<ScoredBet>
+  ): number {
+    const edgeScore = this.calculateEdgeScore(factors);
+
+    // Factor in number of supporting factors
+    const positiveFactors = factors.filter((f) => f.type === 'positive').length;
+    const negativeFactors = factors.filter((f) => f.type === 'negative').length;
+
+    const factorScore = (positiveFactors - negativeFactors) * 0.5;
+
+    // Combine edge and factor count
+    let confidence = 5 + edgeScore + factorScore;
+
+    // Bonus for props (typically better value)
+    if (bet.bet_kind === 'prop') {
+      confidence += 0.5;
+    }
+
+    // Clamp to 0-10
+    return Math.max(0, Math.min(10, confidence));
+  }
+
+  /**
+   * Build optimal parlay respecting constraints
+   */
+  private buildParlay(
+    scoredBets: ScoredBet[],
+    targetLegs: number,
+    sgpMode: 'none' | 'allow' | 'only',
+    lockedLegs: BetLeg[]
+  ): ScoredBet[] {
+    const parlay: ScoredBet[] = [];
+    const usedEvents = new Set<string>();
+    const usedEventMarkets = new Map<string, Set<string>>();
+
+    // Add locked legs first
+    for (const locked of lockedLegs) {
+      const match = scoredBets.find(
+        (b) =>
+          b.event_id === locked.event_id &&
+          b.market === locked.market &&
+          b.pick === locked.pick
+      );
+      if (match) {
+        parlay.push(match);
+        usedEvents.add(match.event_id);
+
+        if (!usedEventMarkets.has(match.event_id)) {
+          usedEventMarkets.set(match.event_id, new Set());
+        }
+        usedEventMarkets.get(match.event_id)!.add(match.market);
+      }
+    }
+
+    // Fill remaining legs
+    for (const bet of scoredBets) {
+      if (parlay.length >= targetLegs) break;
+
+      // Skip if already in parlay
+      if (parlay.some((p) => p.id === bet.id)) continue;
+
+      // SGP constraints
+      if (sgpMode === 'none' && usedEvents.has(bet.event_id)) continue;
+      if (sgpMode === 'only' && usedEvents.size > 0 && !usedEvents.has(bet.event_id)) continue;
+
+      // Conflict detection (same event, conflicting markets)
+      if (usedEvents.has(bet.event_id)) {
+        const eventMarkets = usedEventMarkets.get(bet.event_id)!;
+
+        // Can't have moneyline and spread from same game
+        if (
+          (bet.market === 'h2h' && eventMarkets.has('spreads')) ||
+          (bet.market === 'spreads' && eventMarkets.has('h2h'))
+        ) {
+          continue;
+        }
+
+        // Can't have multiple totals from same game
+        if (bet.market === 'totals' && eventMarkets.has('totals')) {
+          continue;
+        }
+      }
+
+      // Add to parlay
+      parlay.push(bet);
+      usedEvents.add(bet.event_id);
+
+      if (!usedEventMarkets.has(bet.event_id)) {
+        usedEventMarkets.set(bet.event_id, new Set());
+      }
+      usedEventMarkets.get(bet.event_id)!.add(bet.market);
+    }
+
+    return parlay;
+  }
+
+  // ===== UTILITY METHODS =====
+
+  private oddsToImpliedProbability(americanOdds: number): number {
+    if (americanOdds > 0) {
+      return 100 / (americanOdds + 100);
+    } else {
+      return Math.abs(americanOdds) / (Math.abs(americanOdds) + 100);
+    }
+  }
+
+  private isMarketRequested(market: Market, criteria: GeneratorCriteria): boolean {
+    if (criteria.bet_types.includes('moneyline') && market === 'h2h') return true;
+    if (criteria.bet_types.includes('spread') && market === 'spreads') return true;
+    if (criteria.bet_types.includes('over_under') && market === 'totals') return true;
+    if (criteria.extra_markets.some((m) => market.includes(m))) return true;
+    return false;
+  }
+
+  private classifyBetKind(market: Market): 'side' | 'total' | 'prop' {
+    if (market === 'h2h' || market === 'spreads') return 'side';
+    if (market === 'totals') return 'total';
+    return 'prop';
+  }
+
+  private classifyBetTag(market: Market, outcome: any): string | null {
+    if (market === 'h2h') {
+      return outcome.price < 0 ? 'favorite' : 'underdog';
+    }
+    if (market === 'spreads') {
+      return outcome.point < 0 ? 'favorite' : 'underdog';
+    }
+    if (market === 'totals') {
+      return outcome.name.toLowerCase().includes('over') ? 'over' : 'under';
+    }
+    return null;
+  }
+
+  private formatOutcomeLabel(market: Market, outcome: any): string {
+    if (market === 'h2h') return outcome.name;
+
+    if (market === 'spreads') {
+      const point = outcome.point > 0 ? `+${outcome.point}` : outcome.point;
+      return `${outcome.name} ${point}`;
+    }
+
+    if (market === 'totals') {
+      return `${outcome.name} ${outcome.point}`;
+    }
+
+    // Props
+    const participant = outcome.participant || outcome.description || '';
+    const point = outcome.point ? ` ${outcome.point}` : '';
+    return `${participant} ${outcome.name}${point}`.trim();
+  }
+
+  private isOutdoorSport(sport: Sport): boolean {
+    return (
+      sport === 'americanfootball_nfl' || sport === 'americanfootball_ncaaf'
+    );
+  }
+}

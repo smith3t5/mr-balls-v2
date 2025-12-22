@@ -1,0 +1,42 @@
+{
+  "name": "mr-balls-v2",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "pages:build": "npx @cloudflare/next-on-pages",
+    "pages:deploy": "npm run pages:build && wrangler pages deploy .vercel/output/static",
+    "pages:dev": "npx @cloudflare/next-on-pages --watch",
+    "db:migrate": "wrangler d1 migrations apply mr-balls-db",
+    "db:local": "wrangler d1 migrations apply mr-balls-db --local",
+    "db:studio": "wrangler d1 console mr-balls-db",
+    "test:engine": "tsx lib/test-analytics.ts"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.2",
+    "recharts": "^2.15.0",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.5",
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5",
+    "eslint": "^9",
+    "eslint-config-next": "^15.1.0",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8",
+    "autoprefixer": "^10.4.20",
+    "wrangler": "^3.96.0",
+    "tsx": "^4.19.2"
+  }
+}

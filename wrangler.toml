@@ -1,0 +1,30 @@
+name = "mr-balls-v2"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "mr-balls-db"
+database_id = "3ecfe27a-d96b-461d-937d-f047b77cd9d5"
+
+# R2 Storage binding (for future use - user avatars, etc)
+# Note: Commented out for now, uncomment when needed
+# [[r2_buckets]]
+# binding = "USER_ASSETS"
+# bucket_name = "mr-balls-assets"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "production"
+
+# Triggers (lowercase for cron triggers)
+[triggers]
+crons = ["0 0 * * *"]
+
+# Secrets (add via: wrangler secret put <KEY>)
+# ODDS_API_KEY - ff9a8a23c60b12443abca977ec686d1a
+# NFC_TAG_SECRET - fortheboys2025
+# SESSION_SECRET - mNPztTeyvyYaPL+2kSaMZSBZn3SBFuYkM14MpoaJAa4=
+# CRON_SECRET - (generate a new one for cron job authentication)

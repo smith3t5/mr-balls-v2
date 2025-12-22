@@ -1,0 +1,166 @@
+import { getRequestContext } from '@cloudflare/next-on-pages';
+// Generate smart parlay
+import { NextRequest, NextResponse } from 'next/server';
+import { Database } from '@/lib/db';
+import { AnalyticsEngine } from '@/lib/analytics-engine';
+import { OddsAPIClient } from '@/lib/odds-api-client';
+import { WeatherClient } from '@/lib/weather-client';
+import type { GeneratorCriteria } from '@/types';
+
+export const runtime = 'edge';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Check session
+    const sessionId = request.cookies.get('session_id')?.value;
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const { env } = getRequestContext();
+    const db = new Database(env.DB as D1Database);
+
+    // Validate session and get user
+    const session = await db.db
+      .prepare('SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?')
+      .bind(sessionId, Date.now())
+      .first();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Invalid or expired session' },
+        { status: 401 }
+      );
+    }
+
+    // Get user's state for regulations
+    const user = await db.db
+      .prepare('SELECT state_code FROM users WHERE id = ?')
+      .bind(session.user_id)
+      .first();
+
+    const userStateCode = user?.state_code || undefined;
+
+    // Parse request body
+    const criteria: GeneratorCriteria = await request.json();
+
+    // Validate criteria
+    if (!criteria.sports || criteria.sports.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one sport required' },
+        { status: 400 }
+      );
+    }
+
+    if (criteria.legs < 1 || criteria.legs > 8) {
+      return NextResponse.json(
+        { error: 'Legs must be between 1 and 8' },
+        { status: 400 }
+      );
+    }
+
+    // Initialize clients
+    const oddsClient = new OddsAPIClient(env.ODDS_API_KEY || '', db);
+    const weatherClient = new WeatherClient(db);
+    const analyticsEngine = new AnalyticsEngine();
+
+    // Fetch odds data
+    console.log(`Fetching odds for sports: ${criteria.sports.join(', ')}`);
+
+    const markets: string[] = [];
+    if (criteria.bet_types.includes('moneyline')) markets.push('h2h');
+    if (criteria.bet_types.includes('spread')) markets.push('spreads');
+    if (criteria.bet_types.includes('over_under')) markets.push('totals');
+
+    const games = await oddsClient.getOddsForSports(criteria.sports, markets);
+
+    if (games.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'No games available for selected sports',
+        warnings: ['Try selecting different sports or check back later'],
+      });
+    }
+
+    console.log(`Found ${games.length} games`);
+
+    // Enrich with weather data (for outdoor sports)
+    for (const game of games) {
+      if (
+        game.sport === 'americanfootball_nfl' ||
+        game.sport === 'americanfootball_ncaaf'
+      ) {
+        game.weather = await weatherClient.getWeatherForGame(
+          game.home_team,
+          game.commence_time
+        );
+      }
+    }
+
+    // Generate smart parlay
+    console.log('Running analytics engine...');
+    const result = await analyticsEngine.generateSmartParlay(criteria, games, userStateCode);
+
+    // Return result
+    return NextResponse.json({
+      success: true,
+      parlay: result.legs.map((leg) => ({
+        id: leg.id,
+        sport: leg.sport,
+        event_id: leg.event_id,
+        event_name: leg.event_name,
+        commence_time: leg.commence_time,
+        market: leg.market,
+        pick: leg.pick,
+        odds: leg.odds,
+        participant: leg.participant,
+        point: leg.point,
+        bet_kind: leg.bet_kind,
+        bet_tag: leg.bet_tag,
+        dk_link: leg.dk_link,
+        confidence: leg.confidenceScore,
+        edge: leg.edgeScore,
+        factors: leg.factors,
+        locked_by_user: leg.locked_by_user,
+      })),
+      meta: {
+        total_confidence: result.confidence,
+        avg_edge: result.avgEdge,
+        parlay_odds: calculateParlayOdds(result.legs.map((l) => l.odds)),
+      },
+      warnings: [],
+    });
+  } catch (error: any) {
+    console.error('Analytics generation error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to generate parlay',
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+function calculateParlayOdds(americanOdds: number[]): number {
+  const decimalOdds = americanOdds.map((odds) => {
+    if (odds > 0) {
+      return 1 + odds / 100;
+    } else {
+      return 1 + 100 / Math.abs(odds);
+    }
+  });
+
+  const parlayDecimal = decimalOdds.reduce((acc, odds) => acc * odds, 1);
+
+  // Convert back to American
+  if (parlayDecimal >= 2) {
+    return Math.round((parlayDecimal - 1) * 100);
+  } else {
+    return -Math.round(100 / (parlayDecimal - 1));
+  }
+}
