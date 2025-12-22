@@ -1,7 +1,7 @@
 name = "mr-balls-v2"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".vercel/output/static"
+pages_build_output_dir = ".next"
 
 # D1 Database binding
 [[d1_databases]]
@@ -27,4 +27,4 @@ ENVIRONMENT = "production"
 # ODDS_API_KEY - ff9a8a23c60b12443abca977ec686d1a
 # NFC_TAG_SECRET - fortheboys2025
 # SESSION_SECRET - mNPztTeyvyYaPL+2kSaMZSBZn3SBFuYkM14MpoaJAa4=
-# CRON_SECRET - (generate a new one for cron job authentication)
+# CRON_SECRET - d7URErFXA93r/p2dM8oWmNK1Wyu3VRuc5Iobb3Loh3I=
