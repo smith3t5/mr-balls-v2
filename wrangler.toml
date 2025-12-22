@@ -1,7 +1,7 @@
 name = "mr-balls-v2"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".next"
+pages_build_output_dir = ".vercel/output/static"
 
 # D1 Database binding
 [[d1_databases]]
