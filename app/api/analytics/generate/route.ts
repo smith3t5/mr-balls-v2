@@ -77,23 +77,9 @@ export async function POST(request: NextRequest) {
 
     // Add player props if requested
     if (criteria.extra_markets && criteria.extra_markets.length > 0) {
-      for (const propMarket of criteria.extra_markets) {
-        // Map our internal names to Odds API market names
-        switch (propMarket) {
-          case 'player_points':
-            markets.push('player_points');
-            break;
-          case 'player_rebounds':
-            markets.push('player_rebounds');
-            break;
-          case 'player_assists':
-            markets.push('player_assists');
-            break;
-          case 'player_pass_tds':
-            markets.push('player_pass_tds');
-            break;
-        }
-      }
+      // Simply add all requested prop markets to the list
+      // The Odds API uses the same naming convention we do
+      markets.push(...criteria.extra_markets);
     }
 
     const games = await oddsClient.getOddsForSports(criteria.sports, markets);

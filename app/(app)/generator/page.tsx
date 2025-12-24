@@ -39,10 +39,31 @@ const BET_TYPES = [
 ];
 
 const EXTRA_MARKETS = [
-  { key: 'player_points', name: 'Player Points' },
-  { key: 'player_rebounds', name: 'Player Rebounds' },
-  { key: 'player_assists', name: 'Player Assists' },
-  { key: 'player_pass_tds', name: 'Pass TDs' },
+  // Basketball
+  { key: 'player_points', name: 'Player Points', sport: 'basketball' },
+  { key: 'player_rebounds', name: 'Player Rebounds', sport: 'basketball' },
+  { key: 'player_assists', name: 'Player Assists', sport: 'basketball' },
+  { key: 'player_threes', name: 'Player 3-Pointers', sport: 'basketball' },
+  { key: 'player_blocks', name: 'Player Blocks', sport: 'basketball' },
+  { key: 'player_steals', name: 'Player Steals', sport: 'basketball' },
+  // Football
+  { key: 'player_pass_tds', name: 'Pass TDs', sport: 'football' },
+  { key: 'player_pass_yds', name: 'Pass Yards', sport: 'football' },
+  { key: 'player_rush_yds', name: 'Rush Yards', sport: 'football' },
+  { key: 'player_receptions', name: 'Receptions', sport: 'football' },
+  { key: 'player_reception_yds', name: 'Receiving Yards', sport: 'football' },
+  { key: 'player_anytime_td', name: 'Anytime TD Scorer', sport: 'football' },
+  { key: 'player_first_td', name: 'First TD Scorer', sport: 'football' },
+  // Baseball
+  { key: 'batter_hits', name: 'Batter Hits', sport: 'baseball' },
+  { key: 'batter_total_bases', name: 'Batter Total Bases', sport: 'baseball' },
+  { key: 'batter_rbis', name: 'Batter RBIs', sport: 'baseball' },
+  { key: 'batter_runs', name: 'Batter Runs Scored', sport: 'baseball' },
+  { key: 'batter_home_runs', name: 'Batter Home Runs', sport: 'baseball' },
+  { key: 'pitcher_strikeouts', name: 'Pitcher Strikeouts', sport: 'baseball' },
+  // Hockey
+  { key: 'player_shots_on_goal', name: 'Shots on Goal', sport: 'hockey' },
+  { key: 'player_points', name: 'Player Points (G+A)', sport: 'hockey' },
 ];
 
 const LOADING_MESSAGES = [
