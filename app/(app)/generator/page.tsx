@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 
 const SPORTS = [
@@ -256,10 +257,9 @@ export default function Generator() {
 
     // Copy to clipboard
     navigator.clipboard.writeText(shareText).then(() => {
-      alert('Parlay copied to clipboard! Share it with the boys.');
+      toast.success('Parlay copied to clipboard! Share it with the boys 🔥');
     }).catch(() => {
-      // Fallback: show in alert
-      alert(shareText);
+      toast.error('Failed to copy. Please try again.');
     });
   };
 

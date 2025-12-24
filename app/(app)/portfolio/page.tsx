@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 
 export default function Portfolio() {
@@ -75,13 +76,14 @@ export default function Portfolio() {
       if (response.ok) {
         await loadBets();
         setSelectedBet(null);
+        toast.success('Bet deleted successfully');
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to delete bet');
+        toast.error(data.error || 'Failed to delete bet');
       }
     } catch (err) {
       console.error('Failed to delete bet:', err);
-      alert('Failed to delete bet');
+      toast.error('Failed to delete bet');
     } finally {
       setDeleting(false);
     }
@@ -102,14 +104,19 @@ export default function Portfolio() {
         await loadBets();
         // Show message if parlay was auto-updated
         if (data.parlay_auto_updated) {
-          alert(`✅ Leg marked as ${status}! Parlay automatically updated to: ${data.parlay_status}`);
+          toast.success(
+            `Leg marked as ${status}! Parlay automatically updated to: ${data.parlay_status}`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success(`Leg marked as ${status}`);
         }
       } else {
-        alert(data.error || 'Failed to update leg');
+        toast.error(data.error || 'Failed to update leg');
       }
     } catch (err) {
       console.error('Failed to update leg:', err);
-      alert('Failed to update leg');
+      toast.error('Failed to update leg');
     } finally {
       setUpdatingLeg(null);
     }
@@ -134,9 +141,9 @@ export default function Portfolio() {
     const fullText = `${shareText}\n\n📋 Tail this bet: Bet ID ${bet.id}`;
 
     navigator.clipboard.writeText(fullText).then(() => {
-      alert('Bet copied to clipboard! Share with the boys and they can tail it.');
+      toast.success('Bet copied to clipboard! Share with the boys 🔥');
     }).catch(() => {
-      alert(fullText);
+      toast.error('Failed to copy. Try again.');
     });
   };
 
@@ -154,13 +161,13 @@ export default function Portfolio() {
       const data = await response.json();
 
       if (response.ok) {
-        alert('Bet tailed successfully! Check your portfolio.');
+        toast.success('Bet tailed successfully! Check your portfolio 🎯');
         await loadBets();
       } else {
-        alert(data.error || 'Failed to tail bet');
+        toast.error(data.error || 'Failed to tail bet');
       }
     } catch (err) {
-      alert('Failed to tail bet');
+      toast.error('Failed to tail bet');
     }
   };
 
