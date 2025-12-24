@@ -75,6 +75,27 @@ export async function POST(request: NextRequest) {
     if (criteria.bet_types.includes('spread')) markets.push('spreads');
     if (criteria.bet_types.includes('over_under')) markets.push('totals');
 
+    // Add player props if requested
+    if (criteria.extra_markets && criteria.extra_markets.length > 0) {
+      for (const propMarket of criteria.extra_markets) {
+        // Map our internal names to Odds API market names
+        switch (propMarket) {
+          case 'player_points':
+            markets.push('player_points');
+            break;
+          case 'player_rebounds':
+            markets.push('player_rebounds');
+            break;
+          case 'player_assists':
+            markets.push('player_assists');
+            break;
+          case 'player_pass_tds':
+            markets.push('player_pass_tds');
+            break;
+        }
+      }
+    }
+
     const games = await oddsClient.getOddsForSports(criteria.sports, markets);
 
     if (games.length === 0) {
