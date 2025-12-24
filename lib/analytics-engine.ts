@@ -152,20 +152,21 @@ export class AnalyticsEngine {
 
     // 1. Calculate line value (compare to market consensus)
     const lineValue = this.calculateLineValue(bet, game);
-    if (lineValue.impact > 0) {
-      factors.push(lineValue);
-    }
+    // ALWAYS include line value for transparency
+    factors.push(lineValue);
 
     // 2. Sharp money analysis (simulated for now)
     const sharpMoney = this.analyzeSharpMoney(bet, game);
-    if (Math.abs(sharpMoney.impact) > 1) {
+    // Include if ANY impact (lowered threshold from 1)
+    if (Math.abs(sharpMoney.impact) > 0.5) {
       factors.push(sharpMoney);
     }
 
     // 3. Weather impact (if applicable)
     if (game.weather && this.isOutdoorSport(bet.sport!)) {
       const weather = this.analyzeWeather(bet, game.weather);
-      if (Math.abs(weather.impact) > 1) {
+      // Include if ANY impact (lowered threshold from 1)
+      if (Math.abs(weather.impact) > 0.5) {
         factors.push(weather);
       }
     }
@@ -173,6 +174,26 @@ export class AnalyticsEngine {
     // 4. Situational factors
     const situational = this.analyzeSituational(bet, game);
     factors.push(...situational);
+
+    // 5. Add game timing context
+    const gameTime = new Date(game.commence_time);
+    const now = new Date();
+    const hoursUntil = (gameTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    if (hoursUntil < 24) {
+      factors.push({
+        type: 'neutral',
+        category: 'timing',
+        description: `Game starts in ${Math.round(hoursUntil)} hours - lines are more settled`,
+        impact: 0.5,
+      });
+    } else if (hoursUntil > 72) {
+      factors.push({
+        type: 'negative',
+        category: 'timing',
+        description: `Game is ${Math.round(hoursUntil/24)} days away - injury news may shift lines`,
+        impact: -0.5,
+      });
+    }
 
     // 5. Historical trends (would need database of historical data)
     // TODO: Implement when historical data available
@@ -249,15 +270,24 @@ export class AnalyticsEngine {
 
     const impact = edge * 0.5; // Scale to 0-10
 
+    // Create more detailed description
+    let description: string;
+    if (edge > 2) {
+      description = `+${edge.toFixed(1)}% better value than market consensus (${allOdds.length} books averaged)`;
+    } else if (edge < -2) {
+      description = `${edge.toFixed(1)}% worse value than consensus - public overloading this side`;
+    } else if (edge > 0.5) {
+      description = `Slight edge vs market (+${edge.toFixed(1)}%) - decent value here`;
+    } else if (edge < -0.5) {
+      description = `Slightly worse than consensus (${edge.toFixed(1)}%) but within variance`;
+    } else {
+      description = `Fair market value - odds aligned with ${allOdds.length} books`;
+    }
+
     return {
-      type: edge > 0 ? 'positive' : edge < -2 ? 'negative' : 'neutral',
+      type: edge > 0.5 ? 'positive' : edge < -2 ? 'negative' : 'neutral',
       category: 'value',
-      description:
-        edge > 2
-          ? `${edge.toFixed(1)}% better value than market consensus`
-          : edge < -2
-            ? `${Math.abs(edge).toFixed(1)}% worse value than consensus`
-            : 'Fair market value',
+      description,
       impact: Math.min(Math.max(impact, -5), 5),
     };
   }
