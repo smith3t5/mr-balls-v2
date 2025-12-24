@@ -13,6 +13,7 @@ export default function Portfolio() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'won' | 'lost'>('all');
   const [selectedBet, setSelectedBet] = useState<any>(null);
   const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadBets();
@@ -56,6 +57,32 @@ export default function Portfolio() {
       console.error('Failed to update bet:', err);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const deleteBet = async (betId: string) => {
+    if (!confirm('Are you sure you want to delete this bet? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/bets/${betId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        await loadBets();
+        setSelectedBet(null);
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to delete bet');
+      }
+    } catch (err) {
+      console.error('Failed to delete bet:', err);
+      alert('Failed to delete bet');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -253,16 +280,16 @@ export default function Portfolio() {
                             </div>
                             <div className="text-right">
                               <div className="font-bold">{leg.odds > 0 ? '+' : ''}{leg.odds}</div>
-                              {leg.confidence && (
-                                <div className="text-xs text-gold mt-1">
-                                  {leg.confidence.toFixed(1)}/10
+                              {leg.analytics?.edge && (
+                                <div className="text-xs text-win mt-1">
+                                  {leg.analytics.edge.toFixed(1)}% edge
                                 </div>
                               )}
                             </div>
                           </div>
-                          {leg.factors && leg.factors.length > 0 && (
+                          {leg.analytics?.factors && leg.analytics.factors.length > 0 && (
                             <div className="space-y-1 mt-2 pt-2 border-t border-primary-600">
-                              {leg.factors.slice(0, 3).map((factor: any, j: number) => (
+                              {leg.analytics.factors.slice(0, 3).map((factor: any, j: number) => (
                                 <div key={j} className="text-xs flex items-start gap-1">
                                   <span>
                                     {factor.type === 'positive' ? '✅' :
@@ -271,6 +298,20 @@ export default function Portfolio() {
                                   <span className="text-gray-400">{factor.description}</span>
                                 </div>
                               ))}
+                            </div>
+                          )}
+                          {leg.dk_link && (
+                            <div className="mt-2">
+                              <a
+                                href={leg.dk_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#53d337] to-[#3aa82a] hover:from-[#3aa82a] hover:to-[#53d337] text-white text-sm font-bold transition-all"
+                              >
+                                <span>🎰</span>
+                                <span>View on DraftKings</span>
+                              </a>
                             </div>
                           )}
                         </div>
@@ -318,16 +359,28 @@ export default function Portfolio() {
                         </div>
                       )}
 
-                      {/* Share Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          shareBet(bet);
-                        }}
-                        className="w-full mt-2 px-4 py-2 rounded-lg bg-primary-700 hover:bg-primary-600 text-white font-semibold transition-colors"
-                      >
-                        📱 Share Bet
-                      </button>
+                      {/* Share and Delete Buttons */}
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            shareBet(bet);
+                          }}
+                          className="flex-1 px-4 py-2 rounded-lg bg-primary-700 hover:bg-primary-600 text-white font-semibold transition-colors"
+                        >
+                          📱 Share Bet
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteBet(bet.id);
+                          }}
+                          disabled={deleting}
+                          className="px-4 py-2 rounded-lg bg-loss/20 text-loss hover:bg-loss/30 font-semibold transition-colors disabled:opacity-50"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

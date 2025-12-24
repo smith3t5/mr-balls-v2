@@ -233,6 +233,20 @@ export class Database {
       .run();
   }
 
+  async deleteBet(betId: string): Promise<void> {
+    // Delete bet legs first (foreign key constraint)
+    await this.db
+      .prepare('DELETE FROM bet_legs WHERE bet_id = ?')
+      .bind(betId)
+      .run();
+
+    // Delete the bet
+    await this.db
+      .prepare('DELETE FROM bets WHERE id = ?')
+      .bind(betId)
+      .run();
+  }
+
   // ============================================
   // SHARP PLAYS
   // ============================================
