@@ -39,31 +39,17 @@ const BET_TYPES = [
 ];
 
 const EXTRA_MARKETS = [
-  // Basketball
+  // Basketball (these work on basic tier)
   { key: 'player_points', name: 'Player Points' },
   { key: 'player_rebounds', name: 'Player Rebounds' },
   { key: 'player_assists', name: 'Player Assists' },
-  { key: 'player_threes', name: 'Player 3-Pointers' },
-  { key: 'player_blocks', name: 'Player Blocks' },
-  { key: 'player_steals', name: 'Player Steals' },
-  // Football
-  { key: 'player_pass_tds', name: 'Pass TDs' },
-  { key: 'player_pass_yds', name: 'Pass Yards' },
-  { key: 'player_rush_yds', name: 'Rush Yards' },
-  { key: 'player_receptions', name: 'Receptions' },
-  { key: 'player_reception_yds', name: 'Receiving Yards' },
-  { key: 'player_anytime_td', name: 'Anytime TD Scorer' },
-  { key: 'player_first_td', name: 'First TD Scorer' },
-  // Baseball
-  { key: 'batter_hits', name: 'Batter Hits' },
-  { key: 'batter_total_bases', name: 'Batter Total Bases' },
-  { key: 'batter_rbis', name: 'Batter RBIs' },
-  { key: 'batter_runs', name: 'Batter Runs Scored' },
-  { key: 'batter_home_runs', name: 'Batter Home Runs' },
-  { key: 'pitcher_strikeouts', name: 'Pitcher Strikeouts' },
-  // Hockey
-  { key: 'player_shots_on_goal', name: 'Shots on Goal' },
-  { key: 'player_goals', name: 'Player Goals' },
+  { key: 'player_threes', name: 'Player 3-Pointers Made' },
+
+  // NOTE: More props require paid API tier
+  // Football: Pass yards, Rush yards, Receiving yards, Anytime TD
+  // Baseball: Hits, Strikeouts, Home Runs
+  // Hockey: Goals, Assists, Shots
+  // Contact support to upgrade for 50+ additional markets
 ];
 
 const LOADING_MESSAGES = [

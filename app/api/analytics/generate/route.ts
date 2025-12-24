@@ -82,13 +82,25 @@ export async function POST(request: NextRequest) {
       markets.push(...criteria.extra_markets);
     }
 
-    const games = await oddsClient.getOddsForSports(criteria.sports, markets);
+    let games = await oddsClient.getOddsForSports(criteria.sports, markets);
+
+    // If no games found and we requested props, try again with just basic markets
+    if (games.length === 0 && criteria.extra_markets && criteria.extra_markets.length > 0) {
+      console.log('No games found with props, retrying with basic markets only');
+      const basicMarkets = markets.filter(m => ['h2h', 'spreads', 'totals'].includes(m));
+      if (basicMarkets.length > 0) {
+        games = await oddsClient.getOddsForSports(criteria.sports, basicMarkets);
+      }
+    }
 
     if (games.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No games available for selected sports',
-        warnings: ['Try selecting different sports or check back later'],
+        warnings: [
+          'Try selecting different sports or check back later',
+          criteria.extra_markets?.length > 0 ? 'Some player props may require a paid API tier' : null,
+        ].filter(Boolean),
       });
     }
 

@@ -41,7 +41,13 @@ export class OddsAPIClient {
         const response = await fetch(url.toString());
 
         if (!response.ok) {
-          console.error(`Odds API error for ${sport}:`, response.status);
+          const errorText = await response.text();
+          console.error(`Odds API error for ${sport}:`, response.status, errorText);
+
+          // 422 typically means unsupported market
+          if (response.status === 422) {
+            console.error(`Some markets may not be available for ${sport}. Trying with basic markets only.`);
+          }
           continue;
         }
 
