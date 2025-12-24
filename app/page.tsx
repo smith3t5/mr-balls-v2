@@ -223,7 +223,7 @@ export default function Home() {
           {/* Version Badge */}
           <div className="mt-6 text-center">
             <span className="inline-block px-3 py-1 rounded-full bg-primary-800/50 border border-primary-700/50 text-xs text-gray-400 font-mono">
-              v2.0.0
+              v2.1.0
             </span>
           </div>
         </div>
