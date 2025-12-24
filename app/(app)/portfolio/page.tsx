@@ -14,6 +14,7 @@ export default function Portfolio() {
   const [selectedBet, setSelectedBet] = useState<any>(null);
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [updatingLeg, setUpdatingLeg] = useState<string | null>(null);
 
   useEffect(() => {
     loadBets();
@@ -83,6 +84,34 @@ export default function Portfolio() {
       alert('Failed to delete bet');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const updateLegStatus = async (legId: string, status: 'won' | 'lost' | 'push') => {
+    setUpdatingLeg(legId);
+    try {
+      const response = await fetch(`/api/bets/legs/${legId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await loadBets();
+        // Show message if parlay was auto-updated
+        if (data.parlay_auto_updated) {
+          alert(`✅ Leg marked as ${status}! Parlay automatically updated to: ${data.parlay_status}`);
+        }
+      } else {
+        alert(data.error || 'Failed to update leg');
+      }
+    } catch (err) {
+      console.error('Failed to update leg:', err);
+      alert('Failed to update leg');
+    } finally {
+      setUpdatingLeg(null);
     }
   };
 
@@ -273,8 +302,22 @@ export default function Portfolio() {
                       {bet.legs.map((leg: any, i: number) => (
                         <div key={i} className="bg-primary-700 rounded-lg p-3">
                           <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <div className="text-xs text-gray-500 mb-1">LEG {i + 1}</div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="text-xs text-gray-500">LEG {i + 1}</div>
+                                {/* Leg Status Indicator */}
+                                <span className={`text-xs px-2 py-0.5 rounded font-bold ${
+                                  leg.status === 'won' ? 'bg-win/20 text-win' :
+                                  leg.status === 'lost' ? 'bg-loss/20 text-loss' :
+                                  leg.status === 'push' ? 'bg-gray-600 text-gray-300' :
+                                  'bg-gold/20 text-gold'
+                                }`}>
+                                  {leg.status === 'won' ? '✅ Won' :
+                                   leg.status === 'lost' ? '❌ Lost' :
+                                   leg.status === 'push' ? '🔄 Push' :
+                                   '⏳ Pending'}
+                                </span>
+                              </div>
                               <div className="font-semibold">{leg.event_name}</div>
                               <div className="text-gold text-sm mt-1">{leg.pick}</div>
                             </div>
@@ -312,6 +355,45 @@ export default function Portfolio() {
                                 <span>🎰</span>
                                 <span>View on DraftKings</span>
                               </a>
+                            </div>
+                          )}
+
+                          {/* Leg Status Update Buttons (only for pending bets) */}
+                          {bet.status === 'pending' && leg.status === 'pending' && (
+                            <div className="mt-3 pt-3 border-t border-primary-600">
+                              <div className="text-xs text-gray-500 mb-2">Mark this leg:</div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateLegStatus(leg.id, 'won');
+                                  }}
+                                  disabled={updatingLeg === leg.id}
+                                  className="flex-1 px-2 py-1 rounded text-xs bg-win/20 text-win hover:bg-win/30 font-semibold disabled:opacity-50"
+                                >
+                                  ✅ Won
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateLegStatus(leg.id, 'lost');
+                                  }}
+                                  disabled={updatingLeg === leg.id}
+                                  className="flex-1 px-2 py-1 rounded text-xs bg-loss/20 text-loss hover:bg-loss/30 font-semibold disabled:opacity-50"
+                                >
+                                  ❌ Lost
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateLegStatus(leg.id, 'push');
+                                  }}
+                                  disabled={updatingLeg === leg.id}
+                                  className="flex-1 px-2 py-1 rounded text-xs bg-gray-700 text-gray-300 hover:bg-gray-600 font-semibold disabled:opacity-50"
+                                >
+                                  🔄 Push
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>

@@ -199,18 +199,31 @@ export class Database {
 
     const bets = await this.db.prepare(query).bind(...params).all();
 
-    // Fetch legs for each bet
-    const betsWithLegs = await Promise.all(
-      bets.results.map(async (bet: any) => {
-        const legs = await this.db
-          .prepare('SELECT * FROM bet_legs WHERE bet_id = ?')
-          .bind(bet.id)
-          .all();
-        return this.serializeBet(bet, legs.results);
-      })
-    );
+    if (bets.results.length === 0) {
+      return [];
+    }
 
-    return betsWithLegs;
+    // Fetch ALL legs for these bets in ONE query (fix N+1 problem)
+    const betIds = bets.results.map((bet: any) => bet.id);
+    const placeholders = betIds.map(() => '?').join(',');
+    const legsQuery = `SELECT * FROM bet_legs WHERE bet_id IN (${placeholders}) ORDER BY bet_id`;
+
+    const allLegs = await this.db.prepare(legsQuery).bind(...betIds).all();
+
+    // Group legs by bet_id
+    const legsByBetId = new Map<string, any[]>();
+    for (const leg of allLegs.results) {
+      if (!legsByBetId.has(leg.bet_id as string)) {
+        legsByBetId.set(leg.bet_id as string, []);
+      }
+      legsByBetId.get(leg.bet_id as string)!.push(leg);
+    }
+
+    // Serialize bets with their legs
+    return bets.results.map((bet: any) => {
+      const legs = legsByBetId.get(bet.id) || [];
+      return this.serializeBet(bet, legs);
+    });
   }
 
   async updateBetStatus(
