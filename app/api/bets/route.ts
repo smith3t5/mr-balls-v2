@@ -116,24 +116,30 @@ export async function POST(request: NextRequest) {
 
     // Create legs
     for (const leg of legs) {
-      await db.createBetLeg({
-        id: crypto.randomUUID(),
-        bet_id: betId,
-        sport: leg.sport,
-        event_id: leg.event_id,
-        event_name: leg.event_name,
-        commence_time: leg.commence_time,
-        market: leg.market,
-        pick: leg.pick,
-        odds: leg.odds,
-        participant: leg.participant,
-        point: leg.point,
-        bet_kind: leg.bet_kind,
-        bet_tag: leg.bet_tag,
-        dk_link: leg.dk_link,
-        edge: leg.edge,
-        locked_by_user: leg.locked_by_user || false,
-      });
+      try {
+        await db.createBetLeg({
+          id: crypto.randomUUID(),
+          bet_id: betId,
+          sport: leg.sport,
+          event_id: leg.event_id,
+          event_name: leg.event_name,
+          commence_time: leg.commence_time,
+          market: leg.market,
+          pick: leg.pick,
+          odds: leg.odds,
+          participant: leg.participant,
+          point: leg.point,
+          bet_kind: leg.bet_kind,
+          bet_tag: leg.bet_tag,
+          dk_link: leg.dk_link,
+          edge: leg.edge,
+          locked_by_user: leg.locked_by_user || false,
+        });
+      } catch (legError: any) {
+        console.error('Failed to create leg:', legError);
+        console.error('Leg data:', JSON.stringify(leg));
+        throw new Error(`Failed to create leg: ${legError.message}`);
+      }
     }
 
     // Update user stats
