@@ -3,7 +3,25 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
+import {
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  RotateCw,
+  Share2,
+  Trash2,
+  RefreshCw,
+  Target,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+} from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
+import { formatCurrency } from '@/lib/utils';
 
 export default function Portfolio() {
   const searchParams = useSearchParams();
@@ -16,6 +34,7 @@ export default function Portfolio() {
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [updatingLeg, setUpdatingLeg] = useState<string | null>(null);
+  const [autoChecking, setAutoChecking] = useState(false);
 
   useEffect(() => {
     loadBets();
@@ -23,7 +42,7 @@ export default function Portfolio() {
 
   useEffect(() => {
     if (highlightBetId) {
-      const bet = bets.find(b => b.id === highlightBetId);
+      const bet = bets.find((b) => b.id === highlightBetId);
       if (bet) setSelectedBet(bet);
     }
   }, [highlightBetId, bets]);
@@ -39,10 +58,40 @@ export default function Portfolio() {
     setLoading(false);
   };
 
+  const autoCheckResults = async () => {
+    setAutoChecking(true);
+    try {
+      const response = await fetch('/api/bets/auto-check', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await loadBets();
+        if (data.legs_updated > 0) {
+          toast.success(
+            `Auto-check complete! ${data.legs_updated} legs updated, ${data.bets_settled} bets settled`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success('All bets are up to date!');
+        }
+      } else {
+        toast.error(data.error || 'Failed to auto-check');
+      }
+    } catch (err) {
+      console.error('Auto-check error:', err);
+      toast.error('Failed to auto-check results');
+    } finally {
+      setAutoChecking(false);
+    }
+  };
+
   const updateBetStatus = async (betId: string, status: 'won' | 'lost' | 'push') => {
     setUpdating(true);
     try {
-      const bet = bets.find(b => b.id === betId);
+      const bet = bets.find((b) => b.id === betId);
       const actualReturn = status === 'won' ? bet.potential_return : 0;
 
       const response = await fetch(`/api/bets/${betId}`, {
@@ -54,9 +103,11 @@ export default function Portfolio() {
       if (response.ok) {
         await loadBets();
         setSelectedBet(null);
+        toast.success(`Bet marked as ${status}`);
       }
     } catch (err) {
       console.error('Failed to update bet:', err);
+      toast.error('Failed to update bet');
     } finally {
       setUpdating(false);
     }
@@ -102,7 +153,6 @@ export default function Portfolio() {
 
       if (response.ok) {
         await loadBets();
-        // Show message if parlay was auto-updated
         if (data.parlay_auto_updated) {
           toast.success(
             `Leg marked as ${status}! Parlay automatically updated to: ${data.parlay_status}`,
@@ -127,7 +177,8 @@ export default function Portfolio() {
       const decimalOdds = leg.odds > 0 ? 1 + leg.odds / 100 : 1 + 100 / Math.abs(leg.odds);
       return acc * decimalOdds;
     }, 1);
-    const americanOdds = parlayOdds >= 2 ? Math.round((parlayOdds - 1) * 100) : -Math.round(100 / (parlayOdds - 1));
+    const americanOdds =
+      parlayOdds >= 2 ? Math.round((parlayOdds - 1) * 100) : -Math.round(100 / (parlayOdds - 1));
 
     const shareText = generateParlayShareText({
       legs: bet.legs.map((leg: any) => ({
@@ -138,10 +189,10 @@ export default function Portfolio() {
       parlay_odds: americanOdds,
     });
 
-    const fullText = `${shareText}\n\n📋 Tail this bet: Bet ID ${bet.id}`;
+    const fullText = `${shareText}\n\nTail this bet: Bet ID ${bet.id}`;
 
     navigator.clipboard.writeText(fullText).then(() => {
-      toast.success('Bet copied to clipboard! Share with the boys 🔥');
+      toast.success('Bet copied to clipboard! Share with the boys');
     }).catch(() => {
       toast.error('Failed to copy. Try again.');
     });
@@ -161,7 +212,7 @@ export default function Portfolio() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Bet tailed successfully! Check your portfolio 🎯');
+        toast.success('Bet tailed successfully! Check your portfolio');
         await loadBets();
       } else {
         toast.error(data.error || 'Failed to tail bet');
@@ -173,9 +224,9 @@ export default function Portfolio() {
 
   const stats = {
     total: bets.length,
-    pending: bets.filter(b => b.status === 'pending').length,
-    won: bets.filter(b => b.status === 'won').length,
-    lost: bets.filter(b => b.status === 'lost').length,
+    pending: bets.filter((b) => b.status === 'pending').length,
+    won: bets.filter((b) => b.status === 'won').length,
+    lost: bets.filter((b) => b.status === 'lost').length,
     totalWagered: bets.reduce((sum, b) => sum + b.stake, 0),
     totalReturn: bets.reduce((sum, b) => sum + (b.actual_return || 0), 0),
   };
@@ -183,57 +234,83 @@ export default function Portfolio() {
   const profit = stats.totalReturn - stats.totalWagered;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Bet Portfolio</h1>
-          <p className="text-gray-300 mt-1">Track and manage all your bets</p>
+          <h1 className="heading-lg flex items-center gap-3">
+            <Wallet className="w-8 h-8 text-amber-500" />
+            Bet Portfolio
+          </h1>
+          <p className="text-muted mt-2">Track and manage all your bets</p>
         </div>
-        <button
-          onClick={tailBet}
-          className="px-4 py-2 rounded-lg bg-primary-700 hover:bg-primary-600 text-white font-semibold transition-colors"
-        >
-          🎯 Tail a Bet
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={autoCheckResults}
+            disabled={autoChecking || loading}
+            className="btn-secondary btn-sm flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${autoChecking ? 'animate-spin' : ''}`} />
+            {autoChecking ? 'Checking...' : 'Auto-Check Results'}
+          </button>
+          <button onClick={tailBet} className="btn-primary btn-sm flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            Tail a Bet
+          </button>
+        </div>
       </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="stat-card">
           <div className="stat-label">Total Bets</div>
-          <div className="stat-value">{stats.total}</div>
+          <div className="stat-value-sm">{stats.total}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Pending</div>
-          <div className="stat-value text-gray-400">{stats.pending}</div>
+          <div className="stat-label flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Pending
+          </div>
+          <div className="stat-value-sm text-amber-400">{stats.pending}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Won</div>
-          <div className="stat-value text-white">{stats.won}</div>
+          <div className="stat-label flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            Won
+          </div>
+          <div className="stat-value-sm text-emerald-400">{stats.won}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Lost</div>
-          <div className="stat-value text-white">{stats.lost}</div>
+          <div className="stat-label flex items-center gap-1">
+            <XCircle className="w-3 h-3" />
+            Lost
+          </div>
+          <div className="stat-value-sm text-red-400">{stats.lost}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Profit/Loss</div>
-          <div className={`stat-value ${profit >= 0 ? 'text-win' : 'text-loss'}`}>
-            {profit >= 0 ? '+' : ''}${profit.toFixed(2)}
+          <div
+            className={`stat-value-sm flex items-center gap-1 ${
+              profit >= 0 ? 'text-emerald-400' : 'text-red-400'
+            }`}
+          >
+            {profit >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+            {formatCurrency(profit)}
           </div>
         </div>
       </div>
 
       {/* Filter Tabs */}
-      <div className="card">
-        <div className="flex gap-2">
-          {['all', 'pending', 'won', 'lost'].map((f) => (
+      <div className="card-glass">
+        <div className="flex gap-2 flex-wrap">
+          {(['all', 'pending', 'won', 'lost'] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f as any)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              onClick={() => setFilter(f)}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
                 filter === f
-                  ? 'bg-gold text-primary-900'
-                  : 'bg-primary-700 text-gray-400 hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-gray-900 shadow-lg'
+                  : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-700'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -242,262 +319,242 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Bets List */}
+      {/* Loading State */}
       {loading ? (
-        <div className="card text-center py-12">
-          <div className="text-gray-400">Loading bets...</div>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton-card h-48" />
+          ))}
         </div>
       ) : bets.length === 0 ? (
-        <div className="card text-center py-12">
-          <div className="text-6xl mb-4">💼</div>
-          <h3 className="text-xl font-bold mb-2">No bets found</h3>
-          <p className="text-gray-400">
-            {filter === 'all'
-              ? "You haven't placed any bets yet"
-              : `No ${filter} bets`}
+        /* Empty State */
+        <div className="card-glass text-center py-16">
+          <Sparkles className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          <h3 className="heading-sm mb-2">No bets found</h3>
+          <p className="text-muted">
+            {filter === 'all' ? "You haven't placed any bets yet" : `No ${filter} bets`}
           </p>
         </div>
       ) : (
+        /* Bets List */
         <div className="space-y-4">
           {bets.map((bet) => (
             <div
               key={bet.id}
-              className={`card cursor-pointer transition-all ${
-                selectedBet?.id === bet.id
-                  ? 'border-gold ring-2 ring-gold/20'
-                  : 'hover:border-primary-600'
+              className={`card-interactive ${
+                selectedBet?.id === bet.id ? 'border-amber-500/50 shadow-2xl' : ''
               }`}
               onClick={() => setSelectedBet(selectedBet?.id === bet.id ? null : bet)}
             >
+              {/* Bet Header */}
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  {/* Header */}
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="font-bold text-lg">{bet.legs.length}-Leg Parlay</span>
-                    <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                      bet.status === 'won' ? 'bg-win/20 text-win' :
-                      bet.status === 'lost' ? 'bg-loss/20 text-loss' :
-                      bet.status === 'push' ? 'bg-gray-700 text-gray-400' :
-                      'bg-gold/20 text-gold'
-                    }`}>
+                    <span className="heading-sm">{bet.legs.length}-Leg Parlay</span>
+                    <span
+                      className={`${
+                        bet.status === 'won'
+                          ? 'badge-success'
+                          : bet.status === 'lost'
+                          ? 'badge-error'
+                          : bet.status === 'push'
+                          ? 'badge-neutral'
+                          : 'badge-warning'
+                      }`}
+                    >
+                      {bet.status === 'won' && <CheckCircle2 className="w-3 h-3" />}
+                      {bet.status === 'lost' && <XCircle className="w-3 h-3" />}
+                      {bet.status === 'push' && <RotateCw className="w-3 h-3" />}
+                      {bet.status === 'pending' && <Clock className="w-3 h-3" />}
                       {bet.status.toUpperCase()}
                     </span>
                     {bet.confidence && (
-                      <span className="text-sm text-gold">
-                        {'⭐'.repeat(Math.round(bet.confidence / 2))} {bet.confidence.toFixed(1)}
+                      <span className="badge-info">
+                        <Sparkles className="w-3 h-3" />
+                        {bet.confidence.toFixed(1)}/10
                       </span>
                     )}
                   </div>
 
                   {/* Legs Preview */}
-                  <div className="space-y-1">
-                    {bet.legs.slice(0, selectedBet?.id === bet.id ? bet.legs.length : 2).map((leg: any, i: number) => (
-                      <div key={i} className="text-sm">
-                        <span className="text-gray-400">• </span>
-                        <span className="font-medium">{leg.pick}</span>
-                        <span className="text-gray-500 ml-2">({leg.odds > 0 ? '+' : ''}{leg.odds})</span>
-                      </div>
-                    ))}
-                    {bet.legs.length > 2 && selectedBet?.id !== bet.id && (
-                      <div className="text-sm text-gray-500">+ {bet.legs.length - 2} more</div>
-                    )}
-                  </div>
-
-                  {/* Expanded Details */}
-                  {selectedBet?.id === bet.id && (
-                    <div className="mt-4 pt-4 border-t border-primary-700 space-y-3">
-                      {bet.legs.map((leg: any, i: number) => (
-                        <div key={i} className="bg-primary-700 rounded-lg p-3">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className="text-xs text-gray-500">LEG {i + 1}</div>
-                                {/* Leg Status Indicator */}
-                                <span className={`text-xs px-2 py-0.5 rounded font-bold ${
-                                  leg.status === 'won' ? 'bg-win/20 text-win' :
-                                  leg.status === 'lost' ? 'bg-loss/20 text-loss' :
-                                  leg.status === 'push' ? 'bg-gray-600 text-gray-300' :
-                                  'bg-gold/20 text-gold'
-                                }`}>
-                                  {leg.status === 'won' ? '✅ Won' :
-                                   leg.status === 'lost' ? '❌ Lost' :
-                                   leg.status === 'push' ? '🔄 Push' :
-                                   '⏳ Pending'}
-                                </span>
-                              </div>
-                              <div className="font-semibold">{leg.event_name}</div>
-                              <div className="text-gold text-sm mt-1">{leg.pick}</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold">{leg.odds > 0 ? '+' : ''}{leg.odds}</div>
-                              {leg.analytics?.edge && (
-                                <div className="text-xs text-win mt-1">
-                                  {leg.analytics.edge.toFixed(1)}% edge
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          {leg.analytics?.factors && leg.analytics.factors.length > 0 && (
-                            <div className="space-y-1 mt-2 pt-2 border-t border-primary-600">
-                              {leg.analytics.factors.slice(0, 3).map((factor: any, j: number) => (
-                                <div key={j} className="text-xs flex items-start gap-1">
-                                  <span>
-                                    {factor.type === 'positive' ? '✅' :
-                                     factor.type === 'negative' ? '⚠️' : 'ℹ️'}
-                                  </span>
-                                  <span className="text-gray-400">{factor.description}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {leg.dk_link && (
-                            <div className="mt-2">
-                              <a
-                                href={leg.dk_link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#53d337] to-[#3aa82a] hover:from-[#3aa82a] hover:to-[#53d337] text-white text-sm font-bold transition-all"
-                              >
-                                <span>🎰</span>
-                                <span>View on DraftKings</span>
-                              </a>
-                            </div>
-                          )}
-
-                          {/* Leg Status Update Buttons (only for pending bets) */}
-                          {bet.status === 'pending' && leg.status === 'pending' && (
-                            <div className="mt-3 pt-3 border-t border-primary-600">
-                              <div className="text-xs text-gray-500 mb-2">Mark this leg:</div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateLegStatus(leg.id, 'won');
-                                  }}
-                                  disabled={updatingLeg === leg.id}
-                                  className="flex-1 px-2 py-1 rounded text-xs bg-win/20 text-win hover:bg-win/30 font-semibold disabled:opacity-50"
-                                >
-                                  ✅ Won
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateLegStatus(leg.id, 'lost');
-                                  }}
-                                  disabled={updatingLeg === leg.id}
-                                  className="flex-1 px-2 py-1 rounded text-xs bg-loss/20 text-loss hover:bg-loss/30 font-semibold disabled:opacity-50"
-                                >
-                                  ❌ Lost
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateLegStatus(leg.id, 'push');
-                                  }}
-                                  disabled={updatingLeg === leg.id}
-                                  className="flex-1 px-2 py-1 rounded text-xs bg-gray-700 text-gray-300 hover:bg-gray-600 font-semibold disabled:opacity-50"
-                                >
-                                  🔄 Push
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                  <div className="space-y-1.5">
+                    {bet.legs
+                      .slice(0, selectedBet?.id === bet.id ? bet.legs.length : 2)
+                      .map((leg: any, i: number) => (
+                        <div key={i} className="text-sm text-secondary flex items-center gap-2">
+                          <span className="text-gray-500">•</span>
+                          <span className="font-medium">{leg.pick}</span>
+                          <span className="text-muted">
+                            ({leg.odds > 0 ? '+' : ''}
+                            {leg.odds})
+                          </span>
                         </div>
                       ))}
-
-                      {bet.notes && (
-                        <div className="text-sm text-gray-400 italic">
-                          Note: {bet.notes}
-                        </div>
-                      )}
-
-                      {/* Action Buttons for Pending Bets */}
-                      {bet.status === 'pending' && (
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updateBetStatus(bet.id, 'won');
-                            }}
-                            disabled={updating}
-                            className="flex-1 px-4 py-2 rounded-lg bg-win/20 text-win hover:bg-win/30 font-semibold"
-                          >
-                            ✅ Mark Won
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updateBetStatus(bet.id, 'lost');
-                            }}
-                            disabled={updating}
-                            className="flex-1 px-4 py-2 rounded-lg bg-loss/20 text-loss hover:bg-loss/30 font-semibold"
-                          >
-                            ❌ Mark Lost
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updateBetStatus(bet.id, 'push');
-                            }}
-                            disabled={updating}
-                            className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 font-semibold"
-                          >
-                            Push
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Share and Delete Buttons */}
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            shareBet(bet);
-                          }}
-                          className="flex-1 px-4 py-2 rounded-lg bg-primary-700 hover:bg-primary-600 text-white font-semibold transition-colors"
-                        >
-                          📱 Share Bet
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteBet(bet.id);
-                          }}
-                          disabled={deleting}
-                          className="px-4 py-2 rounded-lg bg-loss/20 text-loss hover:bg-loss/30 font-semibold transition-colors disabled:opacity-50"
-                        >
-                          🗑️ Delete
-                        </button>
+                    {bet.legs.length > 2 && selectedBet?.id !== bet.id && (
+                      <div className="text-sm text-muted flex items-center gap-1">
+                        <ChevronDown className="w-4 h-4" />
+                        {bet.legs.length - 2} more legs
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                {/* Right Side - Stakes & Returns */}
+                {/* Bet Stats */}
                 <div className="text-right ml-6">
-                  <div className="text-sm text-gray-400 mb-1">Stake</div>
-                  <div className="font-bold text-xl">${bet.stake.toFixed(0)}</div>
-                  <div className="text-gold text-sm mt-1">
-                    {bet.odds > 0 ? '+' : ''}{bet.odds}
+                  <div className="text-xs text-muted mb-1">Stake</div>
+                  <div className="text-2xl font-bold">{formatCurrency(bet.stake)}</div>
+                  <div className="text-amber-400 text-sm font-semibold mt-1">
+                    {bet.odds > 0 ? '+' : ''}
+                    {bet.odds}
                   </div>
                   {bet.potential_return && (
-                    <div className="text-xs text-gray-500 mt-2">
-                      To win ${bet.potential_return.toFixed(0)}
+                    <div className="text-xs text-muted mt-2">
+                      To win {formatCurrency(bet.potential_return)}
                     </div>
                   )}
                   {bet.actual_return > 0 && (
-                    <div className="text-sm text-win font-bold mt-2">
-                      Won ${bet.actual_return.toFixed(0)}
-                    </div>
-                  )}
-                  {bet.created_at && (
-                    <div className="text-xs text-gray-600 mt-2">
-                      {new Date(bet.created_at).toLocaleDateString()}
+                    <div className="text-sm text-emerald-400 font-bold mt-2 flex items-center gap-1">
+                      <TrendingUp className="w-4 h-4" />
+                      Won {formatCurrency(bet.actual_return)}
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* Expanded View */}
+              {selectedBet?.id === bet.id && (
+                <div className="mt-6 pt-6 border-t border-slate-700/50 space-y-4 animate-fade-in">
+                  {/* Individual Legs */}
+                  {bet.legs.map((leg: any, i: number) => (
+                    <div key={i} className="card-glass p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs text-muted font-semibold">LEG {i + 1}</span>
+                            <span
+                              className={`${
+                                leg.status === 'won'
+                                  ? 'badge-success'
+                                  : leg.status === 'lost'
+                                  ? 'badge-error'
+                                  : leg.status === 'push'
+                                  ? 'badge-neutral'
+                                  : 'badge-warning'
+                              } badge-xs`}
+                            >
+                              {leg.status === 'won' && <CheckCircle2 className="w-3 h-3" />}
+                              {leg.status === 'lost' && <XCircle className="w-3 h-3" />}
+                              {leg.status === 'push' && <RotateCw className="w-3 h-3" />}
+                              {leg.status === 'pending' && <Clock className="w-3 h-3" />}
+                              {leg.status === 'won'
+                                ? 'Won'
+                                : leg.status === 'lost'
+                                ? 'Lost'
+                                : leg.status === 'push'
+                                ? 'Push'
+                                : 'Pending'}
+                            </span>
+                          </div>
+                          <div className="font-semibold text-white">{leg.event_name}</div>
+                          <div className="text-amber-400 text-sm font-medium mt-1">{leg.pick}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold">
+                            {leg.odds > 0 ? '+' : ''}
+                            {leg.odds}
+                          </div>
+                          {leg.analytics?.edge && (
+                            <div className="text-xs text-emerald-400 mt-1">
+                              {leg.analytics.edge.toFixed(1)}% edge
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* DK Link */}
+                      {leg.dk_link && (
+                        <a
+                          href={leg.dk_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white text-sm font-bold transition-all shadow-lg mt-3"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          View on DraftKings
+                        </a>
+                      )}
+
+                      {/* Leg Status Buttons */}
+                      {bet.status === 'pending' && leg.status === 'pending' && (
+                        <div className="mt-4 pt-4 border-t border-slate-700/50">
+                          <div className="text-xs text-muted mb-2">Mark this leg:</div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateLegStatus(leg.id, 'won');
+                              }}
+                              disabled={updatingLeg === leg.id}
+                              className="btn-success btn-xs flex-1"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Won
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateLegStatus(leg.id, 'lost');
+                              }}
+                              disabled={updatingLeg === leg.id}
+                              className="btn-danger btn-xs flex-1"
+                            >
+                              <XCircle className="w-3 h-3" />
+                              Lost
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateLegStatus(leg.id, 'push');
+                              }}
+                              disabled={updatingLeg === leg.id}
+                              className="btn-secondary btn-xs flex-1"
+                            >
+                              <RotateCw className="w-3 h-3" />
+                              Push
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        shareBet(bet);
+                      }}
+                      className="btn-secondary btn-sm flex-1 flex items-center justify-center gap-2"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      Share Bet
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteBet(bet.id);
+                      }}
+                      disabled={deleting}
+                      className="btn-danger btn-sm flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

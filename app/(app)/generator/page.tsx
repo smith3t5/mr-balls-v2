@@ -3,6 +3,24 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
+import {
+  Sparkles,
+  Zap,
+  Settings,
+  Shuffle,
+  Save,
+  Share2,
+  TrendingUp,
+  Shield,
+  Target,
+  Flame,
+  ExternalLink,
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  Loader2,
+  Dices,
+} from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 
 const SPORTS = [
@@ -231,13 +249,14 @@ export default function Generator() {
       });
 
       if (response.ok) {
+        toast.success('Parlay saved to portfolio!');
         router.push('/portfolio');
       } else {
         const data = await response.json();
-        setError(data.error || 'Failed to save bet');
+        toast.error(data.error || 'Failed to save bet');
       }
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -257,116 +276,132 @@ export default function Generator() {
 
     // Copy to clipboard
     navigator.clipboard.writeText(shareText).then(() => {
-      toast.success('Parlay copied to clipboard! Share it with the boys 🔥');
+      toast.success('Parlay copied to clipboard! Share it with the boys');
     }).catch(() => {
       toast.error('Failed to copy. Please try again.');
     });
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Smart Parlay Generator</h1>
-        <p className="text-gray-300 mt-1">AI-powered picks based on value, sharp money, weather & more</p>
+        <h1 className="heading-lg flex items-center gap-3">
+          <Sparkles className="w-8 h-8 text-amber-500" />
+          Smart Parlay Generator
+        </h1>
+        <p className="text-muted mt-2">AI-powered picks based on value, sharp money, weather & more</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}
         <div className="lg:col-span-1 space-y-6">
           {/* Quick Presets */}
-          <div className="card bg-gradient-to-br from-gold/10 to-primary-800 border-gold/30">
-            <h3 className="font-bold mb-3 text-gold">⚡ Quick Presets</h3>
-            <p className="text-xs text-white/80 mb-4">Auto-generate with optimized settings</p>
+          <div className="card-glass border-amber-500/30">
+            <h3 className="heading-sm flex items-center gap-2 mb-3">
+              <Zap className="w-5 h-5 text-amber-500" />
+              Quick Presets
+            </h3>
+            <p className="text-xs text-muted mb-4">Auto-generate with optimized settings</p>
             <div className="space-y-2">
               <button
                 onClick={() => applyPreset('conservative')}
                 disabled={generating}
-                className="w-full px-4 py-3 rounded-lg bg-primary-700 hover:bg-primary-600 border border-primary-600 hover:border-gold/50 transition-all text-left disabled:opacity-50"
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-amber-500/50 transition-all text-left disabled:opacity-50"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-white">🛡️ Conservative</div>
-                    <div className="text-xs text-white/80">2-3 legs • 3% min edge • Favorites</div>
+                    <div className="font-bold text-white flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-blue-400" />
+                      Conservative
+                    </div>
+                    <div className="text-xs text-muted mt-1">2-3 legs • 3% min edge • Favorites</div>
                   </div>
-                  <div className="text-xl text-white">→</div>
+                  <TrendingUp className="w-5 h-5 text-gray-400" />
                 </div>
               </button>
               <button
                 onClick={() => applyPreset('balanced')}
                 disabled={generating}
-                className="w-full px-4 py-3 rounded-lg bg-primary-700 hover:bg-primary-600 border border-primary-600 hover:border-gold/50 transition-all text-left disabled:opacity-50"
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-amber-500/50 transition-all text-left disabled:opacity-50"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-white">⚖️ Balanced</div>
-                    <div className="text-xs text-white/80">3-4 legs • 1% min edge • Mixed</div>
+                    <div className="font-bold text-white flex items-center gap-2">
+                      <Target className="w-4 h-4 text-emerald-400" />
+                      Balanced
+                    </div>
+                    <div className="text-xs text-muted mt-1">3-4 legs • 1% min edge • Mixed</div>
                   </div>
-                  <div className="text-xl text-white">→</div>
+                  <TrendingUp className="w-5 h-5 text-gray-400" />
                 </div>
               </button>
               <button
                 onClick={() => applyPreset('aggressive')}
                 disabled={generating}
-                className="w-full px-4 py-3 rounded-lg bg-primary-700 hover:bg-primary-600 border border-primary-600 hover:border-gold/50 transition-all text-left disabled:opacity-50"
+                className="w-full px-4 py-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-amber-500/50 transition-all text-left disabled:opacity-50"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-white">🔥 Aggressive</div>
-                    <div className="text-xs text-white/80">5-6 legs • 0.5% min edge • High odds</div>
+                    <div className="font-bold text-white flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-red-400" />
+                      Aggressive
+                    </div>
+                    <div className="text-xs text-muted mt-1">5-6 legs • 0.5% min edge • High odds</div>
                   </div>
-                  <div className="text-xl text-white">→</div>
+                  <TrendingUp className="w-5 h-5 text-gray-400" />
                 </div>
               </button>
             </div>
           </div>
 
           {/* Sports Selection */}
-          <div className="card">
-            <h3 className="font-bold mb-3">Sports</h3>
+          <div className="card-glass">
+            <h3 className="heading-sm mb-3">Sports</h3>
             <div className="space-y-2">
               {SPORTS.map(sport => (
-                <label key={sport.key} className="flex items-center gap-2 cursor-pointer">
+                <label key={sport.key} className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
                     checked={selectedSports.includes(sport.key)}
                     onChange={() => toggleSport(sport.key)}
-                    className="rounded border-primary-600 bg-primary-700 text-gold focus:ring-gold"
+                    className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
                   />
-                  <span className="text-sm">{sport.name}</span>
+                  <span className="text-sm text-secondary group-hover:text-white transition-colors">{sport.name}</span>
                 </label>
               ))}
             </div>
           </div>
 
           {/* Bet Types */}
-          <div className="card">
-            <h3 className="font-bold mb-3">Bet Types</h3>
+          <div className="card-glass">
+            <h3 className="heading-sm mb-3">Bet Types</h3>
             <div className="space-y-2">
               {BET_TYPES.map(type => (
-                <label key={type.key} className="flex items-center gap-2 cursor-pointer">
+                <label key={type.key} className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
                     checked={betTypes.includes(type.key)}
                     onChange={() => toggleBetType(type.key)}
-                    className="rounded border-primary-600 bg-primary-700 text-gold focus:ring-gold"
+                    className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
                   />
-                  <span className="text-sm">{type.name}</span>
+                  <span className="text-sm text-secondary group-hover:text-white transition-colors">{type.name}</span>
                 </label>
               ))}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-primary-700">
-              <h4 className="text-sm font-semibold mb-2 text-gray-400">Player Props</h4>
+            <div className="mt-4 pt-4 border-t border-slate-700/50">
+              <h4 className="text-sm font-semibold mb-2 text-muted">Player Props</h4>
               <div className="space-y-2">
                 {EXTRA_MARKETS.map(market => (
-                  <label key={market.key} className="flex items-center gap-2 cursor-pointer">
+                  <label key={market.key} className="flex items-center gap-2 cursor-pointer group">
                     <input
                       type="checkbox"
                       checked={extraMarkets.includes(market.key)}
                       onChange={() => toggleExtraMarket(market.key)}
-                      className="rounded border-primary-600 bg-primary-700 text-gold focus:ring-gold"
+                      className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
                     />
-                    <span className="text-sm">{market.name}</span>
+                    <span className="text-sm text-secondary group-hover:text-white transition-colors">{market.name}</span>
                   </label>
                 ))}
               </div>
@@ -374,24 +409,27 @@ export default function Generator() {
           </div>
 
           {/* Advanced Settings */}
-          <div className="card">
-            <h3 className="font-bold mb-3">Settings</h3>
+          <div className="card-glass">
+            <h3 className="heading-sm flex items-center gap-2 mb-3">
+              <Settings className="w-5 h-5 text-gray-400" />
+              Settings
+            </h3>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Number of Legs</label>
+                <label className="block text-sm font-medium text-secondary mb-2">Number of Legs</label>
                 <input
                   type="number"
                   min="2"
                   max="8"
                   value={numLegs}
                   onChange={(e) => setNumLegs(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-primary-700 border border-primary-600 text-white"
+                  className="input input-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Min Edge (%)</label>
+                <label className="block text-sm font-medium text-secondary mb-2">Min Edge (%)</label>
                 <input
                   type="number"
                   min="0"
@@ -399,13 +437,13 @@ export default function Generator() {
                   step="0.5"
                   value={minEdge}
                   onChange={(e) => setMinEdge(parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-primary-700 border border-primary-600 text-white"
+                  className="input input-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  Odds Range <span className="text-xs text-gray-500 font-normal">(per leg)</span>
+                <label className="block text-sm font-medium text-secondary mb-2">
+                  Odds Range <span className="text-xs text-muted font-normal">(per leg)</span>
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -413,24 +451,24 @@ export default function Generator() {
                     value={oddsMin}
                     onChange={(e) => setOddsMin(parseInt(e.target.value))}
                     placeholder="Min"
-                    className="w-1/2 px-3 py-2 rounded-lg bg-primary-700 border border-primary-600 text-white"
+                    className="input input-sm flex-1"
                   />
                   <input
                     type="number"
                     value={oddsMax}
                     onChange={(e) => setOddsMax(parseInt(e.target.value))}
                     placeholder="Max"
-                    className="w-1/2 px-3 py-2 rounded-lg bg-primary-700 border border-primary-600 text-white"
+                    className="input input-sm flex-1"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Same Game Parlay</label>
+                <label className="block text-sm font-medium text-secondary mb-2">Same Game Parlay</label>
                 <select
                   value={sgpMode}
                   onChange={(e) => setSgpMode(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-lg bg-primary-700 border border-primary-600 text-white"
+                  className="input input-sm"
                 >
                   <option value="none">Different Games Only</option>
                   <option value="allow">Allow Mixed</option>
@@ -443,96 +481,119 @@ export default function Generator() {
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="w-full btn-primary py-3 text-lg"
+            className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2"
           >
-            {generating ? '🔮 Analyzing...' : '🎲 Find Sharp Plays'}
+            {generating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Shuffle className="w-5 h-5" />
+                Find Sharp Plays
+              </>
+            )}
           </button>
         </div>
 
         {/* Results Panel */}
         <div className="lg:col-span-2">
           {error && (
-            <div className="card bg-loss/10 border-loss/50 text-loss-light mb-6">
-              <p>{error}</p>
+            <div className="card-error mb-6">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                <p>{error}</p>
+              </div>
             </div>
           )}
 
           {generating && (
-            <div className="card text-center py-12">
-              <div className="animate-pulse text-6xl mb-4">🔮</div>
-              <p className="text-gray-400 mb-2 text-lg font-semibold">{loadingMessage}</p>
-              <p className="text-sm text-gray-400">Analyzing odds, weather, sharp money & trends</p>
+            <div className="card-glass text-center py-12">
+              <Loader2 className="w-16 h-16 text-amber-500 mx-auto mb-4 animate-spin" />
+              <p className="text-secondary mb-2 text-lg font-semibold">{loadingMessage}</p>
+              <p className="text-sm text-muted">Analyzing odds, weather, sharp money & trends</p>
             </div>
           )}
 
           {parlay && !generating && (
             <div className="space-y-4">
               {/* Success Message Banner */}
-              <div className="card bg-gradient-to-r from-win/20 to-gold/20 border-win/50 text-center py-4">
-                <p className="text-lg font-bold text-white">{successMessage}</p>
+              <div className="card-success text-center py-4">
+                <p className="text-lg font-bold text-white flex items-center justify-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  {successMessage}
+                </p>
               </div>
 
               {/* Summary Card */}
-              <div className="card bg-gradient-to-r from-gold/20 to-win/20 border-gold/50">
+              <div className="card-glass border-amber-500/30">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-2xl font-bold mb-1">{parlay.parlay.length}-Leg Parlay</h3>
-                    <p className="text-sm text-gray-300">
-                      Confidence: <span className="text-gold font-bold">{parlay.meta.total_confidence.toFixed(1)}/10</span>
-                      <span className="mx-2">•</span>
-                      Avg Edge: <span className="text-win font-bold">{parlay.meta.avg_edge.toFixed(1)}%</span>
+                    <p className="text-sm text-secondary">
+                      Confidence: <span className="text-amber-400 font-bold">{parlay.meta.total_confidence.toFixed(1)}/10</span>
+                      <span className="mx-2 text-gray-600">•</span>
+                      Avg Edge: <span className="text-emerald-400 font-bold">{parlay.meta.avg_edge.toFixed(1)}%</span>
                     </p>
                   </div>
                   <div className="text-right">
-                    <div className="text-3xl font-bold text-gold">
+                    <div className="text-3xl font-bold text-amber-400">
                       {parlay.meta.parlay_odds > 0 ? '+' : ''}{parlay.meta.parlay_odds}
                     </div>
-                    <div className="text-sm text-gray-400">Parlay Odds</div>
+                    <div className="text-sm text-muted">Parlay Odds</div>
                   </div>
                 </div>
                 <button
                   onClick={handleShareParlay}
-                  className="w-full px-4 py-2 rounded-lg bg-primary-700 hover:bg-primary-600 text-white font-semibold transition-colors"
+                  className="w-full btn-secondary flex items-center justify-center gap-2"
                 >
-                  📱 Share with the Boys
+                  <Share2 className="w-4 h-4" />
+                  Share with the Boys
                 </button>
               </div>
 
               {/* Legs */}
               {parlay.parlay.map((leg: any, i: number) => (
-                <div key={i} className="card hover:border-primary-600 transition-colors">
+                <div key={i} className="card-hover">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-bold text-gray-400">LEG {i + 1}</span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-primary-700 text-gray-400">
+                        <span className="text-xs font-bold text-muted">LEG {i + 1}</span>
+                        <span className="badge-neutral badge-xs">
                           {leg.sport.replace('_', ' ').toUpperCase()}
                         </span>
                       </div>
-                      <h4 className="font-bold text-lg">{leg.event_name}</h4>
-                      <p className="text-gold font-semibold mt-1">{leg.pick}</p>
+                      <h4 className="font-bold text-lg text-white">{leg.event_name}</h4>
+                      <p className="text-amber-400 font-semibold mt-1">{leg.pick}</p>
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-2xl font-bold">{leg.odds > 0 ? '+' : ''}{leg.odds}</div>
-                      <div className="text-xs text-gold mt-1">
-                        {'⭐'.repeat(Math.round(leg.confidence / 2))} {leg.confidence.toFixed(1)}
+                      <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        {leg.confidence.toFixed(1)}
                       </div>
                     </div>
                   </div>
 
                   {/* Factors */}
                   {leg.factors && leg.factors.length > 0 && (
-                    <div className="space-y-2 mt-4 pt-4 border-t border-primary-700">
+                    <div className="space-y-2 mt-4 pt-4 border-t border-slate-700/50">
                       {leg.factors.map((factor: any, j: number) => (
                         <div key={j} className="flex items-start gap-2 text-sm">
                           <span className="mt-0.5">
-                            {factor.type === 'positive' ? '✅' :
-                             factor.type === 'negative' ? '⚠️' : 'ℹ️'}
+                            {factor.type === 'positive' ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            ) : factor.type === 'negative' ? (
+                              <AlertTriangle className="w-4 h-4 text-amber-400" />
+                            ) : (
+                              <Info className="w-4 h-4 text-blue-400" />
+                            )}
                           </span>
                           <span className={
-                            factor.type === 'positive' ? 'text-win-light' :
-                            factor.type === 'negative' ? 'text-loss-light' :
-                            'text-gray-400'
+                            factor.type === 'positive' ? 'text-emerald-400' :
+                            factor.type === 'negative' ? 'text-amber-400' :
+                            'text-muted'
                           }>
                             {factor.description}
                           </span>
@@ -548,10 +609,10 @@ export default function Generator() {
                         href={leg.dk_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-[#53d337] to-[#3aa82a] hover:from-[#3aa82a] hover:to-[#53d337] text-white font-bold transition-all"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold transition-all shadow-lg"
                       >
-                        <span>🎰</span>
-                        <span>View on DraftKings</span>
+                        <ExternalLink className="w-4 h-4" />
+                        View on DraftKings
                       </a>
                     </div>
                   )}
@@ -559,39 +620,40 @@ export default function Generator() {
               ))}
 
               {/* Save Section */}
-              <div className="card bg-primary-700">
-                <h3 className="font-bold mb-4">Save to Portfolio</h3>
+              <div className="card-glass">
+                <h3 className="heading-sm mb-4">Save to Portfolio</h3>
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
-                    <label className="block text-sm font-medium mb-2">Stake ($)</label>
+                    <label className="block text-sm font-medium text-secondary mb-2">Stake ($)</label>
                     <input
                       type="number"
                       min="1"
                       step="1"
                       value={stake}
                       onChange={(e) => setStake(parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 rounded-lg bg-primary-600 border border-primary-500 text-white"
+                      className="input"
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-sm font-medium mb-2">To Win</label>
-                    <div className="px-3 py-2 rounded-lg bg-primary-600 border border-primary-500 text-gold font-bold">
+                    <label className="block text-sm font-medium text-secondary mb-2">To Win</label>
+                    <div className="px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 font-bold">
                       ${(stake * (parlay.meta.parlay_odds > 0 ? parlay.meta.parlay_odds / 100 : Math.abs(100 / parlay.meta.parlay_odds))).toFixed(2)}
                     </div>
                   </div>
                 </div>
-                <button onClick={handleSave} className="w-full btn-primary mt-4">
-                  💾 Save Parlay
+                <button onClick={handleSave} className="w-full btn-primary mt-4 flex items-center justify-center gap-2">
+                  <Save className="w-5 h-5" />
+                  Save Parlay
                 </button>
               </div>
             </div>
           )}
 
           {!parlay && !generating && !error && (
-            <div className="card text-center py-12">
-              <div className="text-6xl mb-4">🎲</div>
-              <h3 className="text-xl font-bold mb-2">Ready to Generate</h3>
-              <p className="text-gray-400">Configure your preferences and click "Find Sharp Plays"</p>
+            <div className="card-glass text-center py-16">
+              <Dices className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+              <h3 className="heading-sm mb-2">Ready to Generate</h3>
+              <p className="text-muted">Configure your preferences and click "Find Sharp Plays"</p>
             </div>
           )}
         </div>
