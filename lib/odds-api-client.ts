@@ -255,8 +255,8 @@ export class OddsAPIClient {
       const url = new URL(`${this.baseUrl}/sports/${sport}/events/${eventId}/odds`);
       url.searchParams.set('apiKey', this.apiKey);
       url.searchParams.set('regions', 'us');
-      // Fetch multiple bookmakers for proper value analysis (need 2+ for consensus)
-      url.searchParams.set('bookmakers', 'draftkings,fanduel,betmgm');
+      // Fetch ALL US bookmakers for maximum line shopping opportunities
+      // Don't filter by bookmaker - get all available to find edge
       url.searchParams.set('markets', markets.join(','));
       url.searchParams.set('oddsFormat', 'american');
 

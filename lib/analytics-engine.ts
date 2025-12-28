@@ -690,15 +690,16 @@ export class AnalyticsEngine {
 
   /**
    * Calculate aggregate edge score
+   * Focuses on predictive factors (Elo, trends, matchups) over just market consensus
    */
   private calculateEdgeScore(factors: AnalyticsFactor[]): number {
     const weights = {
-      value: 0.35,
-      sharp: 0.25,
-      weather: 0.15,
-      situation: 0.15,
-      trend: 0.10,
-      matchup: 0.10,
+      value: 0.15,      // Reduced - market consensus is less important
+      sharp: 0.20,      // Sharp money still valuable
+      weather: 0.15,    // Weather impacts outcomes
+      situation: 0.25,  // Increased - situational edges are key
+      trend: 0.15,      // Increased - recent performance matters
+      matchup: 0.15,    // Increased - matchup analysis matters
     };
 
     let totalImpact = 0;
@@ -731,9 +732,15 @@ export class AnalyticsEngine {
     // Combine edge and factor count
     let confidence = 5 + edgeScore + factorScore;
 
-    // Bonus for props (typically better value)
+    // Bonus for props (typically have more exploitable edges)
     if (bet.bet_kind === 'prop') {
-      confidence += 0.5;
+      confidence += 1.5;  // Increased from 0.5 - props are harder for books to price
+    }
+
+    // Bonus for favorable odds range (sweet spot is -110 to +150)
+    const odds = bet.odds || 0;
+    if (odds >= -110 && odds <= 150) {
+      confidence += 0.5;  // Fair odds range bonus
     }
 
     // Clamp to 0-10

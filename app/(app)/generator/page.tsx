@@ -110,7 +110,7 @@ export default function Generator() {
   const [oddsMax, setOddsMax] = useState(300);
   const [sgpMode, setSgpMode] = useState<'none' | 'allow' | 'only'>('none');
   const [stake, setStake] = useState(10);
-  const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('any'); // Changed to 'any' for debugging
+  const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C'); // Default to C or better
   const [lockedLegs, setLockedLegs] = useState<any[]>([]); // Legs locked by user
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
