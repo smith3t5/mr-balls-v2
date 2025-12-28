@@ -79,8 +79,8 @@ const EXTRA_MARKETS = [
   // Hockey
   { key: 'player_shots_on_goal', name: 'Shots on Goal' },
   { key: 'player_goals', name: 'Goals Scored' },
-  { key: 'player_assists', name: 'Assists' },
-  { key: 'player_points', name: 'Points (G+A)' },
+  { key: 'player_assists_hockey', name: 'Assists' },
+  { key: 'player_points_hockey', name: 'Points (G+A)' },
   { key: 'player_power_play_points', name: 'Power Play Points' },
 ];
 
@@ -130,6 +130,8 @@ export default function Generator() {
   const [oddsMax, setOddsMax] = useState(300);
   const [sgpMode, setSgpMode] = useState<'none' | 'allow' | 'only'>('none');
   const [stake, setStake] = useState(10);
+  const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C'); // Minimum bet grade
+  const [lockedLegs, setLockedLegs] = useState<any[]>([]); // Legs locked by user
 
   // Check for locked sharp play or preset
   useEffect(() => {
@@ -235,8 +237,9 @@ export default function Generator() {
           bet_types: betTypes,
           extra_markets: extraMarkets,
           sgp_mode: sgpMode,
-          locked: [],
+          locked: lockedLegs,
           min_edge: minEdge,
+          min_tier: minTier,
           mode: 'max_value',
         }),
       });
@@ -514,6 +517,27 @@ export default function Generator() {
                   <option value="only">Same Game Only</option>
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-2">
+                  Minimum Bet Quality
+                </label>
+                <select
+                  value={minTier}
+                  onChange={(e) => setMinTier(e.target.value as any)}
+                  className="input input-sm"
+                >
+                  <option value="any">Any Quality</option>
+                  <option value="D">D-Tier or Better</option>
+                  <option value="C">C-Tier or Better (Recommended)</option>
+                  <option value="B">B-Tier or Better</option>
+                  <option value="A">A-Tier or Better</option>
+                  <option value="S">S-Tier Only (Elite)</option>
+                </select>
+                <p className="text-xs text-muted mt-1">
+                  Filter bets by quality grade. Higher tiers = better expected value.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -616,6 +640,23 @@ export default function Generator() {
                       <p className="text-amber-400 font-semibold mt-1">{leg.pick}</p>
                     </div>
                     <div className="text-right ml-4">
+                      <div className="flex items-center gap-2 justify-end mb-2">
+                        <button
+                          onClick={() => {
+                            const isLocked = lockedLegs.some(l => l.event_id === leg.event_id && l.pick === leg.pick);
+                            if (isLocked) {
+                              setLockedLegs(lockedLegs.filter(l => !(l.event_id === leg.event_id && l.pick === leg.pick)));
+                              toast.success('Leg unlocked');
+                            } else {
+                              setLockedLegs([...lockedLegs, leg]);
+                              toast.success('Leg locked! Click regenerate to build around it.');
+                            }
+                          }}
+                          className={`btn-xs ${lockedLegs.some(l => l.event_id === leg.event_id && l.pick === leg.pick) ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-white hover:bg-slate-600'}`}
+                        >
+                          <Lock className="w-3 h-3" />
+                        </button>
+                      </div>
                       <div className="text-2xl font-bold">{leg.odds > 0 ? '+' : ''}{leg.odds}</div>
                       <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
                         <Sparkles className="w-3 h-3" />

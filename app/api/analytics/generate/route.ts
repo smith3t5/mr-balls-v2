@@ -108,18 +108,20 @@ export async function POST(request: NextRequest) {
 
     console.log(`Found ${games.length} games`);
 
-    // Enrich with weather data (for outdoor sports)
-    for (const game of games) {
-      if (
-        game.sport === 'americanfootball_nfl' ||
-        game.sport === 'americanfootball_ncaaf'
-      ) {
-        game.weather = await weatherClient.getWeatherForGame(
-          game.home_team,
-          game.commence_time
-        );
-      }
-    }
+    // Enrich with weather data (for outdoor sports) - PARALLEL
+    await Promise.all(
+      games.map(async (game) => {
+        if (
+          game.sport === 'americanfootball_nfl' ||
+          game.sport === 'americanfootball_ncaaf'
+        ) {
+          game.weather = await weatherClient.getWeatherForGame(
+            game.home_team,
+            game.commence_time
+          );
+        }
+      })
+    );
 
     // Generate smart parlay
     console.log('Running analytics engine...');

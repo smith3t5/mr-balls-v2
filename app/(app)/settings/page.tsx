@@ -24,6 +24,11 @@ export default function SettingsPage() {
           setKellyMultiplier(data.user.kelly_multiplier || 0.25);
           setDefaultUnitSize(data.user.default_unit_size || 10);
         }
+      })
+      .catch((error) => {
+        console.error('Failed to load settings:', error);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, []);

@@ -175,6 +175,7 @@ export interface GeneratorCriteria {
   sgp_mode: 'none' | 'allow' | 'only';
   locked: BetLeg[];
   min_edge: number;
+  min_tier?: 'S' | 'A' | 'B' | 'C' | 'D' | 'any';
   mode: 'max_value' | 'balanced' | 'chaos';
 }
 

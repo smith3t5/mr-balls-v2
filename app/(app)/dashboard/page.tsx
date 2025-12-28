@@ -36,6 +36,9 @@ export default function Dashboard() {
       if (userData.success) setUser(userData.user);
       if (betsData.success) setBets(betsData.bets);
       if (sharpPlayData.success) setSharpPlay(sharpPlayData.sharp_play);
+    }).catch((error) => {
+      console.error('Failed to load dashboard data:', error);
+    }).finally(() => {
       setLoading(false);
     });
   }, []);

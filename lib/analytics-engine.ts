@@ -47,22 +47,54 @@ export class AnalyticsEngine {
     // 1. Generate all possible bet options
     const allBets = this.generateBetOptions(games, criteria, stateCode);
 
-    // 2. Score each bet
+    // 1.5. Pre-filter to reduce scoring overhead
+    // Only keep bets within reasonable odds range and limit total bets
+    const preFilteredBets = allBets
+      .filter((bet) => {
+        // Skip extreme odds that rarely have value
+        if (bet.odds! < -300 || bet.odds! > 400) return false;
+        return true;
+      })
+      .slice(0, 500); // Limit to 500 best candidates to avoid scoring 1000+ bets
+
+    console.log(`Pre-filtered ${allBets.length} bets down to ${preFilteredBets.length} for scoring`);
+
+    // 2. Score each bet (in parallel for speed)
     const scoredBets = await Promise.all(
-      allBets.map((bet) => this.scoreBet(bet, games))
+      preFilteredBets.map((bet) => this.scoreBet(bet, games))
     );
 
     // 3. Filter by minimum edge
-    const valueBets = scoredBets.filter(
+    let valueBets = scoredBets.filter(
       (bet) => bet.edgeScore >= criteria.min_edge
     );
 
-    if (valueBets.length === 0) {
-      throw new Error('No value bets found with current criteria');
+    // 3.5. Filter by minimum tier if specified
+    if (criteria.min_tier && criteria.min_tier !== 'any') {
+      const tierOrder = { 'S': 5, 'A': 4, 'B': 3, 'C': 2, 'D': 1 };
+      const minTierValue = tierOrder[criteria.min_tier];
+      valueBets = valueBets.filter((bet) => {
+        const betTierValue = tierOrder[bet.analytics.bet_grade || 'D'];
+        return betTierValue >= minTierValue;
+      });
     }
 
-    // 4. Sort by confidence
-    valueBets.sort((a, b) => b.confidenceScore - a.confidenceScore);
+    if (valueBets.length === 0) {
+      throw new Error(`No ${criteria.min_tier && criteria.min_tier !== 'any' ? criteria.min_tier + '-tier or better ' : ''}value bets found with current criteria. Try lowering minimum tier or edge.`);
+    }
+
+    // 4. Add randomization for diversity (shuffle top 50% to avoid same picks)
+    const topHalf = Math.ceil(valueBets.length / 2);
+    const topBets = valueBets.slice(0, topHalf);
+    const restBets = valueBets.slice(topHalf);
+
+    // Shuffle top bets for variety
+    for (let i = topBets.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [topBets[i], topBets[j]] = [topBets[j], topBets[i]];
+    }
+
+    valueBets = [...topBets, ...restBets];
 
     // 5. Build optimal parlay
     const parlay = this.buildParlay(
