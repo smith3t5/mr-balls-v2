@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS bet_legs_new (
   public_money_pct REAL,
   line_movement REAL,
   locked_by_user INTEGER DEFAULT 0,
+  expected_value REAL,
+  kelly_fraction REAL,
+  kelly_units REAL,
+  true_probability REAL,
+  implied_probability REAL,
+  bet_grade TEXT,
+  closing_odds REAL,
+  clv REAL,
   FOREIGN KEY (bet_id) REFERENCES bets(id) ON DELETE CASCADE
 );
 
