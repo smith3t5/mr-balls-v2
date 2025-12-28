@@ -60,6 +60,12 @@ export default function Portfolio() {
   const [notes, setNotes] = useState('');
   const [submittingManualBet, setSubmittingManualBet] = useState(false);
 
+  // Cashout modal state
+  const [showCashoutModal, setShowCashoutModal] = useState(false);
+  const [cashoutBetId, setCashoutBetId] = useState<string | null>(null);
+  const [cashoutStatus, setCashoutStatus] = useState<'won' | 'lost' | 'push'>('won');
+  const [cashoutAmount, setCashoutAmount] = useState('');
+
   useEffect(() => {
     loadBets();
   }, [filter]);
@@ -74,7 +80,7 @@ export default function Portfolio() {
   const loadBets = async () => {
     setLoading(true);
     const url = filter === 'all' ? '/api/bets' : `/api/bets?status=${filter}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { credentials: 'include' });
     const data = await response.json();
     if (data.success) {
       setBets(data.bets);
@@ -87,6 +93,7 @@ export default function Portfolio() {
     try {
       const response = await fetch('/api/bets/auto-check', {
         method: 'POST',
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -112,22 +119,43 @@ export default function Portfolio() {
     }
   };
 
-  const updateBetStatus = async (betId: string, status: 'won' | 'lost' | 'push') => {
+  const openCashoutModal = (betId: string, status: 'won' | 'lost' | 'push') => {
+    const bet = bets.find((b) => b.id === betId);
+    setCashoutBetId(betId);
+    setCashoutStatus(status);
+    // Pre-fill with potential return for won, 0 for lost, stake for push
+    const defaultAmount = status === 'won' ? bet.potential_return : status === 'push' ? bet.stake : 0;
+    setCashoutAmount(defaultAmount.toString());
+    setShowCashoutModal(true);
+  };
+
+  const updateBetStatus = async () => {
+    if (!cashoutBetId) return;
+
+    const amount = parseFloat(cashoutAmount);
+    if (isNaN(amount) || amount < 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
     setUpdating(true);
     try {
-      const bet = bets.find((b) => b.id === betId);
-      const actualReturn = status === 'won' ? bet.potential_return : 0;
-
-      const response = await fetch(`/api/bets/${betId}`, {
+      const response = await fetch(`/api/bets/${cashoutBetId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, actual_return: actualReturn }),
+        credentials: 'include',
+        body: JSON.stringify({ status: cashoutStatus, actual_return: amount }),
       });
 
       if (response.ok) {
         await loadBets();
         setSelectedBet(null);
-        toast.success(`Bet marked as ${status}`);
+        setShowCashoutModal(false);
+        setCashoutBetId(null);
+        toast.success(`Bet marked as ${cashoutStatus}`);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to update bet');
       }
     } catch (err) {
       console.error('Failed to update bet:', err);
@@ -146,6 +174,7 @@ export default function Portfolio() {
     try {
       const response = await fetch(`/api/bets/${betId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -170,6 +199,7 @@ export default function Portfolio() {
       const response = await fetch(`/api/bets/legs/${legId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ status }),
       });
 
@@ -230,6 +260,7 @@ export default function Portfolio() {
       const response = await fetch('/api/bets/tail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ bet_id: betId.trim() }),
       });
 
@@ -316,6 +347,7 @@ export default function Portfolio() {
       const response = await fetch('/api/bets/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           bet_type: betType,
           legs: legs.map(leg => ({
@@ -666,6 +698,45 @@ export default function Portfolio() {
                     </div>
                   ))}
 
+                  {/* Bet Status Update (if pending) */}
+                  {bet.status === 'pending' && (
+                    <div className="border-t border-slate-700/50 pt-4">
+                      <div className="text-xs text-muted mb-2 font-semibold">Mark entire bet:</div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCashoutModal(bet.id, 'won');
+                          }}
+                          className="btn-success btn-sm flex-1"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Won
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCashoutModal(bet.id, 'lost');
+                          }}
+                          className="btn-danger btn-sm flex-1"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Lost
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCashoutModal(bet.id, 'push');
+                          }}
+                          className="btn-secondary btn-sm flex-1"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                          Push
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="flex gap-3 pt-4">
                     <button
@@ -929,6 +1000,61 @@ export default function Portfolio() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cashout Modal */}
+      {showCashoutModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-white mb-4">
+                Mark Bet as {cashoutStatus === 'won' ? 'Won' : cashoutStatus === 'lost' ? 'Lost' : 'Push'}
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    {cashoutStatus === 'won' ? 'Payout Amount ($)' : cashoutStatus === 'push' ? 'Return Amount ($)' : 'Lost Amount ($)'}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={cashoutAmount}
+                    onChange={(e) => setCashoutAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    autoFocus
+                  />
+                  <div className="text-xs text-muted mt-1">
+                    {cashoutStatus === 'won' && 'Enter the full payout or cashout amount'}
+                    {cashoutStatus === 'lost' && 'Usually $0 unless partial cashout'}
+                    {cashoutStatus === 'push' && 'Enter the amount returned (usually your stake)'}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowCashoutModal(false);
+                      setCashoutBetId(null);
+                    }}
+                    className="btn-secondary flex-1"
+                    disabled={updating}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={updateBetStatus}
+                    className="btn-primary flex-1"
+                    disabled={updating}
+                  >
+                    {updating ? 'Updating...' : 'Confirm'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
