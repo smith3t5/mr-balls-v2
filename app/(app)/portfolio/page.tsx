@@ -121,6 +121,8 @@ export default function Portfolio() {
 
   const openCashoutModal = (betId: string, status: 'won' | 'lost' | 'push') => {
     const bet = bets.find((b) => b.id === betId);
+    if (!bet) return; // Safety check
+
     setCashoutBetId(betId);
     setCashoutStatus(status);
     // Pre-fill with potential return for won, 0 for lost, stake for push

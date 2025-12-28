@@ -22,6 +22,7 @@ export default function Home() {
       const response = await fetch('/api/auth/nfc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ nfc_tag_id: nfcTag, username, state_code: stateCode }),
       });
 
