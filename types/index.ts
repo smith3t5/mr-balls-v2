@@ -75,11 +75,18 @@ export interface LegAnalytics {
   public_money_pct: number | null;
   line_movement: number | null;
   factors: AnalyticsFactor[];
+  // Advanced betting metrics
+  expected_value?: number; // EV as percentage
+  kelly_fraction?: number; // Recommended fraction of bankroll
+  kelly_units?: number; // Recommended units (1 unit = 1% of bankroll)
+  true_probability?: number; // Model's estimated win probability
+  implied_probability?: number; // Market's implied probability
+  bet_grade?: 'S' | 'A' | 'B' | 'C' | 'D'; // Bet quality grade
 }
 
 export interface AnalyticsFactor {
   type: 'positive' | 'negative' | 'neutral';
-  category: 'value' | 'sharp' | 'weather' | 'trend' | 'situation' | 'matchup';
+  category: 'value' | 'sharp' | 'weather' | 'trend' | 'situation' | 'matchup' | 'timing';
   description: string;
   impact: number; // -10 to +10
 }

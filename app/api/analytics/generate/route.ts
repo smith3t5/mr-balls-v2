@@ -144,6 +144,13 @@ export async function POST(request: NextRequest) {
         edge: leg.edgeScore,
         factors: leg.factors,
         locked_by_user: leg.locked_by_user,
+        // Advanced betting metrics
+        expected_value: leg.analytics.expected_value,
+        kelly_units: leg.analytics.kelly_units,
+        kelly_fraction: leg.analytics.kelly_fraction,
+        true_probability: leg.analytics.true_probability,
+        implied_probability: leg.analytics.implied_probability,
+        bet_grade: leg.analytics.bet_grade,
       })),
       meta: {
         total_confidence: result.confidence,

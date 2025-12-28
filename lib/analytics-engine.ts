@@ -10,6 +10,12 @@ import type {
 } from '@/types';
 import { generateDraftKingsLink } from './draftkings-links';
 import { isMarketAllowedInState } from './state-regulations';
+import {
+  calculateEVPercentage,
+  kellyBetSize,
+  impliedProbability,
+  calculateEdge,
+} from './betting-algorithms';
 
 export interface ScoredBet extends BetLeg {
   edgeScore: number;
@@ -208,6 +214,30 @@ export class AnalyticsEngine {
     const edgeScore = this.calculateEdgeScore(factors);
     const confidenceScore = this.calculateConfidenceScore(factors, bet);
 
+    // Advanced betting metrics
+    const marketImpliedProb = impliedProbability(bet.odds!);
+
+    // Convert confidence score to true probability estimate
+    // Confidence score is 0-100, we adjust market probability by the edge
+    const trueProbability = this.estimateTrueProbability(
+      confidenceScore,
+      edgeScore,
+      marketImpliedProb
+    );
+
+    // Calculate EV and Kelly sizing
+    const expectedValue = calculateEVPercentage(trueProbability, bet.odds!);
+    const kelly = kellyBetSize(
+      trueProbability,
+      bet.odds!,
+      0.25, // Quarter Kelly (conservative)
+      0.01, // 1% minimum edge
+      0.05  // 5% maximum bet
+    );
+
+    // Grade the bet
+    const betGrade = this.gradeBet(expectedValue, kelly.edge, confidenceScore);
+
     return {
       ...(bet as ScoredBet),
       edgeScore,
@@ -219,6 +249,13 @@ export class AnalyticsEngine {
         public_money_pct: null,
         line_movement: null,
         factors,
+        // Advanced metrics
+        expected_value: expectedValue,
+        kelly_fraction: kelly.fraction,
+        kelly_units: kelly.units,
+        true_probability: trueProbability,
+        implied_probability: marketImpliedProb,
+        bet_grade: betGrade,
       },
       status: 'pending',
       locked_by_user: false,
@@ -720,5 +757,51 @@ export class AnalyticsEngine {
     return (
       sport === 'americanfootball_nfl' || sport === 'americanfootball_ncaaf'
     );
+  }
+
+  /**
+   * Estimate true win probability based on confidence score and edge
+   *
+   * This converts our internal confidence/edge scores into a win probability
+   * that can be compared against market odds.
+   */
+  private estimateTrueProbability(
+    confidenceScore: number, // 0-100
+    edgeScore: number, // typically -5 to +5
+    marketImpliedProb: number // 0-1
+  ): number {
+    // Start with market probability as baseline
+    // Add edge as adjustment (edgeScore represents percentage points)
+    // Scale confidence to weight the adjustment
+    const confidenceWeight = Math.min(confidenceScore / 100, 1);
+    const edgeAdjustment = (edgeScore / 100) * confidenceWeight;
+
+    let trueProbability = marketImpliedProb + edgeAdjustment;
+
+    // Clamp between 0.05 and 0.95 (never say impossible or certain)
+    trueProbability = Math.max(0.05, Math.min(0.95, trueProbability));
+
+    return trueProbability;
+  }
+
+  /**
+   * Grade a bet based on EV, edge, and confidence
+   * S = Elite (8%+ EV)
+   * A = Excellent (5-8% EV)
+   * B = Good (3-5% EV)
+   * C = Decent (2-3% EV)
+   * D = Marginal (0-2% EV)
+   */
+  private gradeBet(
+    expectedValue: number,
+    edge: number,
+    confidenceScore: number
+  ): 'S' | 'A' | 'B' | 'C' | 'D' {
+    // Primary grading based on EV
+    if (expectedValue >= 8) return 'S';
+    if (expectedValue >= 5) return 'A';
+    if (expectedValue >= 3) return 'B';
+    if (expectedValue >= 2) return 'C';
+    return 'D';
   }
 }

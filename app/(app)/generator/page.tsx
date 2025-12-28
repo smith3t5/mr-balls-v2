@@ -624,6 +624,48 @@ export default function Generator() {
                     </div>
                   </div>
 
+                  {/* Advanced Metrics */}
+                  {leg.expected_value !== undefined && (
+                    <div className="grid grid-cols-2 gap-3 mt-3 p-3 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/30">
+                      <div>
+                        <div className="text-xs text-muted mb-1">Expected Value</div>
+                        <div className={`text-lg font-bold ${leg.expected_value >= 3 ? 'text-emerald-400' : leg.expected_value >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                          {leg.expected_value >= 0 ? '+' : ''}{leg.expected_value.toFixed(1)}%
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted mb-1">Recommended Units</div>
+                        <div className="text-lg font-bold text-white">
+                          {leg.kelly_units !== undefined ? leg.kelly_units.toFixed(1) : '0.0'}U
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted mb-1">Bet Grade</div>
+                        <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-sm ${
+                          leg.bet_grade === 'S' ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-slate-900' :
+                          leg.bet_grade === 'A' ? 'bg-gradient-to-br from-emerald-400 to-green-500 text-white' :
+                          leg.bet_grade === 'B' ? 'bg-gradient-to-br from-blue-400 to-cyan-500 text-white' :
+                          leg.bet_grade === 'C' ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white' :
+                          'bg-gradient-to-br from-gray-600 to-gray-700 text-white'
+                        }`}>
+                          {leg.bet_grade || 'D'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted mb-1">True vs Market</div>
+                        <div className="text-xs text-white">
+                          {leg.true_probability !== undefined && leg.implied_probability !== undefined ? (
+                            <>
+                              {(leg.true_probability * 100).toFixed(1)}% vs {(leg.implied_probability * 100).toFixed(1)}%
+                            </>
+                          ) : (
+                            'N/A'
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Factors */}
                   {leg.factors && leg.factors.length > 0 && (
                     <div className="space-y-2 mt-4 pt-4 border-t border-slate-700/50">
