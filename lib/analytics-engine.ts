@@ -734,6 +734,9 @@ export class AnalyticsEngine {
     const parlay: ScoredBet[] = [];
     const usedEvents = new Set<string>();
     const usedEventMarkets = new Map<string, Set<string>>();
+    const usedEventPropKeys = new Map<string, Set<string>>(); // Track prop conflicts per event
+    const usedEventHasSide = new Map<string, boolean>(); // Track if event has side bet
+    const usedEventHasTotal = new Map<string, boolean>(); // Track if event has total bet
 
     // Add locked legs first
     for (const locked of lockedLegs) {
@@ -751,8 +754,36 @@ export class AnalyticsEngine {
           usedEventMarkets.set(match.event_id, new Set());
         }
         usedEventMarkets.get(match.event_id)!.add(match.market);
+
+        // Track prop conflicts for locked legs
+        if (match.bet_kind === 'prop') {
+          if (!usedEventPropKeys.has(match.event_id)) {
+            usedEventPropKeys.set(match.event_id, new Set());
+          }
+          usedEventPropKeys.get(match.event_id)!.add(this.propConflictKey(match));
+        }
+
+        // Track side/total for locked legs
+        if (match.bet_kind === 'side') {
+          usedEventHasSide.set(match.event_id, true);
+        }
+        if (match.bet_kind === 'total') {
+          usedEventHasTotal.set(match.event_id, true);
+        }
       }
     }
+
+    // Identify prop-capable events for reservation
+    const propEventIds = new Set<string>(
+      scoredBets
+        .filter((b) => b.bet_kind === 'prop')
+        .map((b) => b.event_id)
+    );
+
+    // Count prop vs standard legs needed
+    const propsInLocked = parlay.filter(p => p.bet_kind === 'prop').length;
+    const standardInLocked = parlay.filter(p => p.bet_kind === 'side' || p.bet_kind === 'total').length;
+    const remainingLegs = targetLegs - parlay.length;
 
     // Fill remaining legs with sport diversity
     const usedSports = new Set<string>();
@@ -766,6 +797,13 @@ export class AnalyticsEngine {
         if (usedEvents.has(bet.event_id)) continue;
         if (usedSports.has(bet.sport)) continue; // Skip if we already have this sport
 
+        // PROP RESERVATION: Don't use prop-capable events for standard bets if we need props
+        const isStandardBet = bet.bet_kind === 'side' || bet.bet_kind === 'total';
+        const needMoreProps = propsInLocked === 0 && propEventIds.size > 0;
+        if (isStandardBet && needMoreProps && propEventIds.has(bet.event_id)) {
+          continue; // Reserve this event for prop picks
+        }
+
         parlay.push(bet);
         usedEvents.add(bet.event_id);
         usedSports.add(bet.sport);
@@ -774,6 +812,16 @@ export class AnalyticsEngine {
           usedEventMarkets.set(bet.event_id, new Set());
         }
         usedEventMarkets.get(bet.event_id)!.add(bet.market);
+
+        // Track conflicts
+        if (bet.bet_kind === 'prop') {
+          if (!usedEventPropKeys.has(bet.event_id)) {
+            usedEventPropKeys.set(bet.event_id, new Set());
+          }
+          usedEventPropKeys.get(bet.event_id)!.add(this.propConflictKey(bet));
+        }
+        if (bet.bet_kind === 'side') usedEventHasSide.set(bet.event_id, true);
+        if (bet.bet_kind === 'total') usedEventHasTotal.set(bet.event_id, true);
       }
     }
 
@@ -798,20 +846,24 @@ export class AnalyticsEngine {
         }
       }
 
-      // Conflict detection (same event, conflicting markets)
+      // Advanced conflict detection for same game parlays
       if (usedEvents.has(bet.event_id)) {
-        const eventMarkets = usedEventMarkets.get(bet.event_id)!;
+        // Check prop conflicts (same player, same market, different lines)
+        if (bet.bet_kind === 'prop') {
+          const propKey = this.propConflictKey(bet);
+          if (usedEventPropKeys.has(bet.event_id) &&
+              usedEventPropKeys.get(bet.event_id)!.has(propKey)) {
+            continue; // Skip duplicate prop
+          }
+        }
 
-        // Can't have moneyline and spread from same game
-        if (
-          (bet.market === 'h2h' && eventMarkets.has('spreads')) ||
-          (bet.market === 'spreads' && eventMarkets.has('h2h'))
-        ) {
+        // Prevent multiple side bets (moneyline + spread conflict)
+        if (bet.bet_kind === 'side' && usedEventHasSide.get(bet.event_id)) {
           continue;
         }
 
-        // Can't have multiple totals from same game
-        if (bet.market === 'totals' && eventMarkets.has('totals')) {
+        // Prevent multiple total bets from same game
+        if (bet.bet_kind === 'total' && usedEventHasTotal.get(bet.event_id)) {
           continue;
         }
       }
@@ -824,12 +876,41 @@ export class AnalyticsEngine {
         usedEventMarkets.set(bet.event_id, new Set());
       }
       usedEventMarkets.get(bet.event_id)!.add(bet.market);
+
+      // Track prop conflicts
+      if (bet.bet_kind === 'prop') {
+        if (!usedEventPropKeys.has(bet.event_id)) {
+          usedEventPropKeys.set(bet.event_id, new Set());
+        }
+        usedEventPropKeys.get(bet.event_id)!.add(this.propConflictKey(bet));
+      }
+
+      // Track side/total usage
+      if (bet.bet_kind === 'side') {
+        usedEventHasSide.set(bet.event_id, true);
+      }
+      if (bet.bet_kind === 'total') {
+        usedEventHasTotal.set(bet.event_id, true);
+      }
     }
 
     return parlay;
   }
 
   // ===== UTILITY METHODS =====
+
+  /**
+   * Generate unique conflict key for props to prevent duplicate player/stat combinations
+   * Format: market|participant|point
+   * Example: "player_points|patrick mahomes|250.5"
+   */
+  private propConflictKey(bet: Partial<ScoredBet>): string {
+    const market = String(bet.market || '');
+    const participant = String(bet.participant || '');
+    const point = bet.point === 0 || bet.point ? String(bet.point) : '';
+    const id = participant ? participant : String(bet.pick || '');
+    return `${market}|${id}|${point}`.toLowerCase();
+  }
 
   private oddsToImpliedProbability(americanOdds: number): number {
     if (americanOdds > 0) {
