@@ -40,49 +40,12 @@ const BET_TYPES = [
   { key: 'moneyline', name: 'Moneyline' },
 ];
 
-const EXTRA_MARKETS = [
-  // Basketball
-  { key: 'player_points', name: 'Player Points' },
-  { key: 'player_rebounds', name: 'Player Rebounds' },
-  { key: 'player_assists', name: 'Player Assists' },
-  { key: 'player_threes', name: 'Player 3-Pointers' },
-  { key: 'player_blocks', name: 'Player Blocks' },
-  { key: 'player_steals', name: 'Player Steals' },
-  { key: 'player_double_double', name: 'Player Double Double' },
-
-  // Football (NFL/NCAAF)
-  { key: 'player_pass_tds', name: 'Pass Touchdowns' },
-  { key: 'player_pass_yds', name: 'Passing Yards' },
-  { key: 'player_pass_completions', name: 'Pass Completions' },
-  { key: 'player_pass_attempts', name: 'Pass Attempts' },
-  { key: 'player_pass_interceptions', name: 'Interceptions Thrown' },
-  { key: 'player_rush_yds', name: 'Rushing Yards' },
-  { key: 'player_rush_attempts', name: 'Rush Attempts' },
-  { key: 'player_receptions', name: 'Receptions' },
-  { key: 'player_reception_yds', name: 'Receiving Yards' },
-  { key: 'player_anytime_td', name: 'Anytime TD Scorer' },
-  { key: 'player_first_td', name: 'First TD Scorer' },
-  { key: 'player_last_td', name: 'Last TD Scorer' },
-  { key: 'player_kicking_points', name: 'Kicking Points' },
-
-  // Baseball
-  { key: 'batter_hits', name: 'Batter Hits' },
-  { key: 'batter_total_bases', name: 'Batter Total Bases' },
-  { key: 'batter_rbis', name: 'Batter RBIs' },
-  { key: 'batter_runs_scored', name: 'Batter Runs Scored' },
-  { key: 'batter_home_runs', name: 'Batter Home Runs' },
-  { key: 'batter_stolen_bases', name: 'Stolen Bases' },
-  { key: 'pitcher_strikeouts', name: 'Pitcher Strikeouts' },
-  { key: 'pitcher_hits_allowed', name: 'Hits Allowed' },
-  { key: 'pitcher_walks', name: 'Walks Allowed' },
-  { key: 'pitcher_earned_runs', name: 'Earned Runs' },
-
-  // Hockey
-  { key: 'player_shots_on_goal', name: 'Shots on Goal' },
-  { key: 'player_goals', name: 'Goals Scored' },
-  { key: 'player_assists_hockey', name: 'Assists' },
-  { key: 'player_points_hockey', name: 'Points (G+A)' },
-  { key: 'player_power_play_points', name: 'Power Play Points' },
+// Player props temporarily disabled - requires higher Odds API tier
+// Current $30/month plan only includes standard markets (h2h, spreads, totals)
+// Contact support@the-odds-api.com to inquire about prop betting access
+const EXTRA_MARKETS: { key: string; name: string }[] = [
+  // Props disabled - API tier doesn't support them
+  // Uncomment when upgraded to a plan that includes player props
 ];
 
 const LOADING_MESSAGES = [
