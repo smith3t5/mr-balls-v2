@@ -11,10 +11,17 @@ const HARDCODED_USER = {
   stats: {
     wins: 0,
     losses: 0,
+    pushes: 0,
     roi: 0,
     total_bets: 0,
     units_wagered: 0,
     units_profit: 0,
+    sharp_score: 50.0,
+    best_win_streak: 0,
+    current_streak: 0,
+  },
+  preferences: {
+    default_unit_size: 10.0,
   }
 };
 
