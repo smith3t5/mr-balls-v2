@@ -12,6 +12,7 @@ import {
   TrendingUp,
   TrendingDown,
   Loader2,
+  Settings,
 } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -44,6 +45,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Generator', href: '/generator', icon: Sparkles },
     { name: 'Portfolio', href: '/portfolio', icon: Wallet },
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
+    { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
   if (loading) {

@@ -25,6 +25,14 @@ export interface ScoredBet extends BetLeg {
 }
 
 export class AnalyticsEngine {
+  private kellyMultiplier: number;
+  private bankroll: number;
+
+  constructor(kellyMultiplier: number = 0.25, bankroll: number = 1000) {
+    this.kellyMultiplier = kellyMultiplier;
+    this.bankroll = bankroll;
+  }
+
   /**
    * Generate smart parlay based on criteria
    */
@@ -230,7 +238,7 @@ export class AnalyticsEngine {
     const kelly = kellyBetSize(
       trueProbability,
       bet.odds!,
-      0.25, // Quarter Kelly (conservative)
+      this.kellyMultiplier, // User's Kelly preference
       0.01, // 1% minimum edge
       0.05  // 5% maximum bet
     );

@@ -36,13 +36,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's state for regulations
+    // Get user's state and settings for regulations and Kelly calculations
     const user = await db.db
-      .prepare('SELECT state_code FROM users WHERE id = ?')
+      .prepare('SELECT state_code, kelly_multiplier, bankroll FROM users WHERE id = ?')
       .bind(session.user_id)
       .first();
 
     const userStateCode = user?.state_code || undefined;
+    const kellyMultiplier = user?.kelly_multiplier || 0.25;
+    const bankroll = user?.bankroll || 1000;
 
     // Parse request body
     const criteria: GeneratorCriteria = await request.json();
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
     // Initialize clients
     const oddsClient = new OddsAPIClient(env.ODDS_API_KEY || '', db);
     const weatherClient = new WeatherClient(db);
-    const analyticsEngine = new AnalyticsEngine();
+    const analyticsEngine = new AnalyticsEngine(kellyMultiplier, bankroll);
 
     // Fetch odds data
     console.log(`Fetching odds for sports: ${criteria.sports.join(', ')}`);
