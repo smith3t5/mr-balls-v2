@@ -38,22 +38,26 @@ export default function STierAlert() {
     <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 px-4 max-w-2xl">
       <div className="bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 rounded-lg shadow-2xl border-4 border-yellow-300">
         <div className="relative p-6">
-          {/* Close button */}
+          {/* Close button - highly visible */}
           <button
             onClick={() => setDismissed(true)}
-            className="absolute top-2 right-2 text-slate-900 hover:text-slate-700"
+            className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors z-10"
+            aria-label="Dismiss alert"
           >
-            <X className="w-6 h-6" />
+            <X className="w-6 h-6 text-slate-900" />
           </button>
 
-          {/* Header */}
-          <div className="text-center mb-3">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <Zap className="w-8 h-8 text-slate-900" />
-              <h2 className="text-2xl font-black text-slate-900 uppercase">
-                S-Tier Bet Detected!
+          {/* Outrageous header */}
+          <div className="text-center mb-4">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Zap className="w-10 h-10 text-slate-900" />
+              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">
+                Listen up you stupid fucks!!!
               </h2>
-              <Zap className="w-8 h-8 text-slate-900" />
+              <Zap className="w-10 h-10 text-slate-900" />
+            </div>
+            <div className="text-xl font-bold text-slate-900 bg-white/30 inline-block px-4 py-2 rounded-full">
+              🚨 S-TIER BET DETECTED 🚨
             </div>
           </div>
 
