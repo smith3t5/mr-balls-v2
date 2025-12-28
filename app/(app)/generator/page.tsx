@@ -20,6 +20,7 @@ import {
   Info,
   Loader2,
   Dices,
+  Calendar,
 } from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 
@@ -93,7 +94,7 @@ export default function Generator() {
   const [numLegs, setNumLegs] = useState(3);
   const [betTypes, setBetTypes] = useState(['spread', 'over_under']);
   const [extraMarkets, setExtraMarkets] = useState<string[]>([]);
-  const [minEdge, setMinEdge] = useState(0.5);
+  const [minEdge, setMinEdge] = useState(0);  // Changed from 0.5 to 0
   const [oddsMin, setOddsMin] = useState(-300);
   const [oddsMax, setOddsMax] = useState(300);
   const [sgpMode, setSgpMode] = useState<'none' | 'allow' | 'only'>('none');
@@ -572,6 +573,15 @@ export default function Generator() {
                         </span>
                       </div>
                       <h4 className="font-bold text-lg text-white">{leg.event_name}</h4>
+                      <p className="text-xs text-muted mt-1 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(leg.commence_time).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </p>
                       <p className="text-amber-400 font-semibold mt-1">{leg.pick}</p>
                     </div>
                     <div className="text-right ml-4">
