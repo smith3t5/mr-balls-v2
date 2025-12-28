@@ -15,6 +15,7 @@ import {
   Settings,
   History,
 } from 'lucide-react';
+import STierAlert from './components/STierAlert';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -65,6 +66,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900">
+      {/* S-Tier Alert Banner */}
+      <STierAlert />
+
       {/* Premium Header */}
       <header className="bg-gradient-to-r from-slate-800/90 to-slate-900/90 backdrop-blur-lg border-b border-slate-700/50 shadow-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">

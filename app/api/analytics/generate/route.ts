@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     if (criteria.legs < 1 || criteria.legs > 8) {
       return NextResponse.json(
-        { error: 'Legs must be between 1 and 8' },
+        { error: 'Legs must be between 1 and 8 (1 = single bet, 2+ = parlay)' },
         { status: 400 }
       );
     }

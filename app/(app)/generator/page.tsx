@@ -130,7 +130,7 @@ export default function Generator() {
   const [oddsMax, setOddsMax] = useState(300);
   const [sgpMode, setSgpMode] = useState<'none' | 'allow' | 'only'>('none');
   const [stake, setStake] = useState(10);
-  const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C'); // Minimum bet grade
+  const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('any'); // Changed to 'any' for debugging
   const [lockedLegs, setLockedLegs] = useState<any[]>([]); // Legs locked by user
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -460,10 +460,12 @@ export default function Generator() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-secondary mb-2">Number of Legs</label>
+                <label className="block text-sm font-medium text-secondary mb-2">
+                  Number of Legs <span className="text-xs text-muted font-normal">(1 for single bet)</span>
+                </label>
                 <input
                   type="number"
-                  min="2"
+                  min="1"
                   max="8"
                   value={numLegs}
                   onChange={(e) => setNumLegs(parseInt(e.target.value))}

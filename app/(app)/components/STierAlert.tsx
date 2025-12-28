@@ -1,0 +1,120 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Zap, X } from 'lucide-react';
+
+export default function STierAlert() {
+  const [alert, setAlert] = useState<any>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    // Check for S-tier bets every 5 minutes
+    const checkForSTierBets = async () => {
+      try {
+        const response = await fetch('/api/sharp-play/s-tier');
+        const data = await response.json();
+
+        if (data.success && data.bet) {
+          setAlert(data.bet);
+          setDismissed(false); // Reset dismiss when new bet found
+        }
+      } catch (error) {
+        console.error('Failed to check for S-tier bets:', error);
+      }
+    };
+
+    // Check immediately on mount
+    checkForSTierBets();
+
+    // Then check every 5 minutes
+    const interval = setInterval(checkForSTierBets, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!alert || dismissed) return null;
+
+  return (
+    <div className="fixed top-20 left-0 right-0 z-50 px-4 animate-bounce">
+      <div className="max-w-4xl mx-auto bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 rounded-lg shadow-2xl border-4 border-yellow-300 animate-pulse">
+        <div className="relative p-6">
+          {/* Close button */}
+          <button
+            onClick={() => setDismissed(true)}
+            className="absolute top-2 right-2 text-slate-900 hover:text-slate-700"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* Outrageous header */}
+          <div className="text-center mb-4">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Zap className="w-12 h-12 text-slate-900 animate-pulse" />
+              <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">
+                Listen up you stupid fucks!!!
+              </h2>
+              <Zap className="w-12 h-12 text-slate-900 animate-pulse" />
+            </div>
+            <div className="text-2xl font-bold text-slate-900 bg-white/30 inline-block px-6 py-2 rounded-full">
+              🚨 S-TIER BET DETECTED 🚨
+            </div>
+          </div>
+
+          {/* Bet details */}
+          <div className="bg-white/90 rounded-lg p-6 space-y-3">
+            <div className="text-center">
+              <div className="text-3xl font-black text-slate-900 mb-2">
+                {alert.event_name}
+              </div>
+              <div className="text-2xl font-bold text-amber-600 mb-1">
+                {alert.pick}
+              </div>
+              <div className="text-xl font-semibold text-slate-700">
+                {alert.odds > 0 ? '+' : ''}{alert.odds}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mt-4">
+              <div className="text-center bg-emerald-100 rounded-lg p-3">
+                <div className="text-sm text-emerald-700 font-semibold">Expected Value</div>
+                <div className="text-2xl font-black text-emerald-600">
+                  +{alert.expected_value?.toFixed(1)}%
+                </div>
+              </div>
+              <div className="text-center bg-amber-100 rounded-lg p-3">
+                <div className="text-sm text-amber-700 font-semibold">Kelly Units</div>
+                <div className="text-2xl font-black text-amber-600">
+                  {alert.kelly_units?.toFixed(1)}U
+                </div>
+              </div>
+              <div className="text-center bg-yellow-100 rounded-lg p-3">
+                <div className="text-sm text-yellow-700 font-semibold">Grade</div>
+                <div className="text-3xl font-black text-yellow-600">
+                  {alert.bet_grade}
+                </div>
+              </div>
+            </div>
+
+            {/* Analysis */}
+            {alert.analysis && (
+              <div className="mt-4 p-4 bg-slate-100 rounded-lg">
+                <div className="text-sm font-semibold text-slate-700 mb-1">Why This Bet Slaps:</div>
+                <div className="text-sm text-slate-600">{alert.analysis}</div>
+              </div>
+            )}
+
+            {/* CTA */}
+            <div className="text-center mt-6">
+              <a
+                href="/generator"
+                className="inline-block bg-gradient-to-r from-emerald-500 to-green-600 text-white font-black text-xl px-8 py-4 rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all shadow-lg"
+              >
+                🔥 LOCK IT IN NOW 🔥
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

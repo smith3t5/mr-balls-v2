@@ -47,6 +47,14 @@ export class AnalyticsEngine {
     // 1. Generate all possible bet options
     const allBets = this.generateBetOptions(games, criteria, stateCode);
 
+    // Count bet kinds for debugging
+    const betKindCounts = allBets.reduce((acc: any, bet) => {
+      const kind = bet.bet_kind || 'unknown';
+      acc[kind] = (acc[kind] || 0) + 1;
+      return acc;
+    }, {});
+    console.log(`Generated bet options by kind:`, betKindCounts);
+
     // 1.5. Pre-filter to reduce scoring overhead
     // Limit total bets to avoid scoring 1000+ combinations
     const preFilteredBets = allBets.slice(0, 1000); // Increased limit
@@ -63,14 +71,24 @@ export class AnalyticsEngine {
       (bet) => bet.edgeScore >= criteria.min_edge
     );
 
+    // Log grade distribution before tier filtering
+    const gradeDistribution = valueBets.reduce((acc: any, bet) => {
+      const grade = bet.analytics.bet_grade || 'D';
+      acc[grade] = (acc[grade] || 0) + 1;
+      return acc;
+    }, {});
+    console.log(`Grade distribution before tier filter:`, gradeDistribution);
+
     // 3.5. Filter by minimum tier if specified
     if (criteria.min_tier && criteria.min_tier !== 'any') {
       const tierOrder = { 'S': 5, 'A': 4, 'B': 3, 'C': 2, 'D': 1 };
       const minTierValue = tierOrder[criteria.min_tier];
+      const beforeFilter = valueBets.length;
       valueBets = valueBets.filter((bet) => {
         const betTierValue = tierOrder[bet.analytics.bet_grade || 'D'];
         return betTierValue >= minTierValue;
       });
+      console.log(`Tier filter (${criteria.min_tier}+): ${beforeFilter} → ${valueBets.length} bets`);
     }
 
     if (valueBets.length === 0) {
@@ -998,22 +1016,22 @@ export class AnalyticsEngine {
 
   /**
    * Grade a bet based on EV, edge, and confidence
-   * S = Elite (8%+ EV)
-   * A = Excellent (5-8% EV)
-   * B = Good (3-5% EV)
-   * C = Decent (2-3% EV)
-   * D = Marginal (0-2% EV)
+   * S = Elite (5%+ EV, high confidence)
+   * A = Excellent (3-5% EV)
+   * B = Good (2-3% EV)
+   * C = Decent (1-2% EV)
+   * D = Marginal (0-1% EV)
    */
   private gradeBet(
     expectedValue: number,
     edge: number,
     confidenceScore: number
   ): 'S' | 'A' | 'B' | 'C' | 'D' {
-    // Primary grading based on EV
-    if (expectedValue >= 8) return 'S';
-    if (expectedValue >= 5) return 'A';
-    if (expectedValue >= 3) return 'B';
-    if (expectedValue >= 2) return 'C';
+    // More lenient grading based on EV
+    if (expectedValue >= 5 && confidenceScore >= 6) return 'S';
+    if (expectedValue >= 3) return 'A';
+    if (expectedValue >= 2) return 'B';
+    if (expectedValue >= 1) return 'C';
     return 'D';
   }
 }
