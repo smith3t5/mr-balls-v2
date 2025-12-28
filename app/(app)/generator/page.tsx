@@ -21,6 +21,7 @@ import {
   Loader2,
   Dices,
   Calendar,
+  Lock,
 } from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 

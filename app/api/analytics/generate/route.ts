@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     // Calculate required prop legs for breadth-first optimization
     const totalMarkets = markets.length;
     const propMarketCount = criteria.extra_markets?.length || 0;
-    const estimatedPropLegs = propMarketCount > 0
+    const estimatedPropLegs = propMarketCount > 0 && totalMarkets > 0
       ? Math.ceil(criteria.legs * (propMarketCount / totalMarkets))
       : 0;
 
@@ -104,7 +104,10 @@ export async function POST(request: NextRequest) {
       console.log('No games found with props, retrying with basic markets only');
       const basicMarkets = markets.filter(m => ['h2h', 'spreads', 'totals'].includes(m));
       if (basicMarkets.length > 0) {
-        games = await oddsClient.getOddsForSports(criteria.sports, basicMarkets);
+        games = await oddsClient.getOddsForSports(criteria.sports, basicMarkets, {
+          sgpMode: criteria.sgp_mode,
+          requiredPropLegs: 0, // No props in fallback
+        });
       }
     }
 

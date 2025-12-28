@@ -23,7 +23,7 @@ export class OddsAPIClient {
       requiredPropLegs?: number;
     }
   ): Promise<GameData[]> {
-    const allGames: GameData[] = [];
+    const gamesMap = new Map<string, GameData>();
 
     // Separate standard markets from props
     const { standardMarkets, propMarkets } = this.separateMarkets(markets);
@@ -37,7 +37,7 @@ export class OddsAPIClient {
       // Phase 1: Fetch standard markets (h2h, spreads, totals)
       if (standardMarkets.length > 0) {
         const standardGames = await this.fetchMarkets(sport, standardMarkets, 60); // 60s cache
-        allGames.push(...standardGames);
+        this.mergeGamesIntoMap(gamesMap, standardGames);
       }
 
       // Phase 2: Fetch props with chunking and breadth-first strategy
@@ -48,11 +48,12 @@ export class OddsAPIClient {
           wantsUniqueGames,
           requiredPropLegs
         );
-        allGames.push(...propGames);
+        this.mergeGamesIntoMap(gamesMap, propGames);
       }
     }
 
-    console.log(`Total games fetched: ${allGames.length}, API requests used: ${this.requestCount}/${this.requestBudget}`);
+    const allGames = Array.from(gamesMap.values());
+    console.log(`Total unique games: ${allGames.length}, API requests used: ${this.requestCount}/${this.requestBudget}`);
     return allGames;
   }
 
@@ -278,6 +279,38 @@ export class OddsAPIClient {
     } catch (error) {
       console.error('Error getting usage stats:', error);
       return { requests_used: 0, requests_remaining: 500 };
+    }
+  }
+
+  /**
+   * Merge games into map, combining bookmakers for same event
+   */
+  private mergeGamesIntoMap(gamesMap: Map<string, GameData>, newGames: GameData[]): void {
+    for (const game of newGames) {
+      const existing = gamesMap.get(game.id);
+
+      if (existing) {
+        // Merge bookmakers - combine markets from different fetches
+        for (const newBook of game.bookmakers) {
+          const existingBook = existing.bookmakers.find(b => b.key === newBook.key);
+
+          if (existingBook) {
+            // Combine markets for same bookmaker
+            const existingMarketKeys = new Set(existingBook.markets.map(m => m.key));
+            for (const newMarket of newBook.markets) {
+              if (!existingMarketKeys.has(newMarket.key)) {
+                existingBook.markets.push(newMarket);
+              }
+            }
+          } else {
+            // Add new bookmaker
+            existing.bookmakers.push(newBook);
+          }
+        }
+      } else {
+        // First time seeing this game
+        gamesMap.set(game.id, game);
+      }
     }
   }
 
