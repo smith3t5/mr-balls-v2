@@ -177,6 +177,8 @@ export interface GeneratorCriteria {
   min_edge: number;
   min_tier?: 'S' | 'A' | 'B' | 'C' | 'D' | 'any';
   mode: 'max_value' | 'balanced' | 'chaos';
+  date_from?: string;
+  date_to?: string;
 }
 
 export interface WeatherData {

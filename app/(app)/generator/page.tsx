@@ -125,13 +125,14 @@ export default function Generator() {
   const [numLegs, setNumLegs] = useState(3);
   const [betTypes, setBetTypes] = useState(['spread', 'over_under']);
   const [extraMarkets, setExtraMarkets] = useState<string[]>([]);
-  const [minEdge, setMinEdge] = useState(0);  // Changed from 0.5 to 0
   const [oddsMin, setOddsMin] = useState(-300);
   const [oddsMax, setOddsMax] = useState(300);
   const [sgpMode, setSgpMode] = useState<'none' | 'allow' | 'only'>('none');
   const [stake, setStake] = useState(10);
   const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C'); // Minimum bet grade
   const [lockedLegs, setLockedLegs] = useState<any[]>([]); // Legs locked by user
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Check for locked sharp play or preset
   useEffect(() => {
@@ -184,7 +185,6 @@ export default function Generator() {
     switch (preset) {
       case 'conservative':
         setNumLegs(2 + Math.floor(Math.random() * 2)); // 2-3 legs
-        setMinEdge(3);
         setOddsMin(-200);
         setOddsMax(150);
         setBetTypes(['moneyline', 'spread']);
@@ -192,7 +192,6 @@ export default function Generator() {
         break;
       case 'balanced':
         setNumLegs(3 + Math.floor(Math.random() * 2)); // 3-4 legs
-        setMinEdge(1);
         setOddsMin(-250);
         setOddsMax(250);
         setBetTypes(['moneyline', 'spread', 'over_under']);
@@ -200,7 +199,6 @@ export default function Generator() {
         break;
       case 'aggressive':
         setNumLegs(5 + Math.floor(Math.random() * 2)); // 5-6 legs
-        setMinEdge(0.5);
         setOddsMin(-150);
         setOddsMax(400);
         setBetTypes(['spread', 'over_under']);
@@ -238,9 +236,11 @@ export default function Generator() {
           extra_markets: extraMarkets,
           sgp_mode: sgpMode,
           locked: lockedLegs,
-          min_edge: minEdge,
+          min_edge: 0, // Use 0 internally, not user-configurable
           min_tier: minTier,
           mode: 'max_value',
+          date_from: dateFrom,
+          date_to: dateTo,
         }),
       });
 
@@ -357,7 +357,7 @@ export default function Generator() {
                       <Shield className="w-4 h-4 text-blue-400" />
                       Conservative
                     </div>
-                    <div className="text-xs text-muted mt-1">2-3 legs • 3% min edge • Favorites</div>
+                    <div className="text-xs text-muted mt-1">2-3 legs • Safer odds • Favorites</div>
                   </div>
                   <TrendingUp className="w-5 h-5 text-gray-400" />
                 </div>
@@ -373,7 +373,7 @@ export default function Generator() {
                       <Target className="w-4 h-4 text-emerald-400" />
                       Balanced
                     </div>
-                    <div className="text-xs text-muted mt-1">3-4 legs • 1% min edge • Mixed</div>
+                    <div className="text-xs text-muted mt-1">3-4 legs • Moderate odds • Mixed</div>
                   </div>
                   <TrendingUp className="w-5 h-5 text-gray-400" />
                 </div>
@@ -389,7 +389,7 @@ export default function Generator() {
                       <Flame className="w-4 h-4 text-red-400" />
                       Aggressive
                     </div>
-                    <div className="text-xs text-muted mt-1">5-6 legs • 0.5% min edge • High odds</div>
+                    <div className="text-xs text-muted mt-1">5-6 legs • High odds • With props</div>
                   </div>
                   <TrendingUp className="w-5 h-5 text-gray-400" />
                 </div>
@@ -471,16 +471,28 @@ export default function Generator() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-secondary mb-2">Min Edge (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="20"
-                  step="0.5"
-                  value={minEdge}
-                  onChange={(e) => setMinEdge(parseFloat(e.target.value))}
-                  className="input input-sm"
-                />
+                <label className="block text-sm font-medium text-secondary mb-2">
+                  Date Range <span className="text-xs text-muted font-normal">(optional)</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="input input-sm flex-1"
+                    placeholder="From"
+                  />
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="input input-sm flex-1"
+                    placeholder="To"
+                  />
+                </div>
+                <p className="text-xs text-muted mt-1">
+                  Filter games by start date. Leave blank for all upcoming games.
+                </p>
               </div>
 
               <div>

@@ -48,14 +48,8 @@ export class AnalyticsEngine {
     const allBets = this.generateBetOptions(games, criteria, stateCode);
 
     // 1.5. Pre-filter to reduce scoring overhead
-    // Only keep bets within reasonable odds range and limit total bets
-    const preFilteredBets = allBets
-      .filter((bet) => {
-        // Skip extreme odds that rarely have value
-        if (bet.odds! < -300 || bet.odds! > 400) return false;
-        return true;
-      })
-      .slice(0, 500); // Limit to 500 best candidates to avoid scoring 1000+ bets
+    // Limit total bets to avoid scoring 1000+ combinations
+    const preFilteredBets = allBets.slice(0, 1000); // Increased limit
 
     console.log(`Pre-filtered ${allBets.length} bets down to ${preFilteredBets.length} for scoring`);
 

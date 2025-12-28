@@ -95,6 +95,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Filter by date range if specified
+    if (criteria.date_from || criteria.date_to) {
+      const fromDate = criteria.date_from ? new Date(criteria.date_from).getTime() : 0;
+      const toDate = criteria.date_to ? new Date(criteria.date_to).setHours(23, 59, 59, 999) : Infinity;
+
+      games = games.filter(game => {
+        const gameTime = game.commence_time;
+        return gameTime >= fromDate && gameTime <= toDate;
+      });
+
+      console.log(`Filtered to ${games.length} games within date range`);
+    }
+
     if (games.length === 0) {
       return NextResponse.json({
         success: false,
