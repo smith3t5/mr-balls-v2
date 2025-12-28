@@ -138,6 +138,102 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Advanced Analytics Section */}
+      <div className="card-glass">
+        <div className="flex items-center gap-3 mb-6">
+          <Shield className="w-6 h-6 text-cyan-400" />
+          <div>
+            <h2 className="text-xl font-bold text-white">Advanced Analytics</h2>
+            <p className="text-xs text-muted">Professional betting metrics</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Expected Value */}
+          <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/30">
+            <div className="text-xs text-muted mb-2 flex items-center gap-1">
+              <TrendingUp className="w-3 h-3" />
+              Avg Expected Value
+            </div>
+            <div className={`text-2xl font-bold ${
+              (user.stats.total_ev || 0) >= 3 ? 'text-emerald-400' :
+              (user.stats.total_ev || 0) >= 0 ? 'text-amber-400' :
+              'text-red-400'
+            }`}>
+              {(user.stats.total_ev || 0) >= 0 ? '+' : ''}{(user.stats.total_ev || 0).toFixed(2)}%
+            </div>
+            <div className="text-xs text-muted mt-2">
+              {(user.stats.total_ev || 0) >= 5 ? 'Excellent edge' :
+               (user.stats.total_ev || 0) >= 3 ? 'Good edge' :
+               (user.stats.total_ev || 0) >= 0 ? 'Positive EV' :
+               'Negative EV'}
+            </div>
+          </div>
+
+          {/* Closing Line Value */}
+          <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/30">
+            <div className="text-xs text-muted mb-2 flex items-center gap-1">
+              <Target className="w-3 h-3" />
+              Avg Closing Line Value
+            </div>
+            <div className={`text-2xl font-bold ${
+              (user.stats.avg_clv || 0) > 0 ? 'text-emerald-400' :
+              (user.stats.avg_clv || 0) === 0 ? 'text-amber-400' :
+              'text-red-400'
+            }`}>
+              {(user.stats.avg_clv || 0) >= 0 ? '+' : ''}{((user.stats.avg_clv || 0) * 100).toFixed(2)}%
+            </div>
+            <div className="text-xs text-muted mt-2">
+              {(user.stats.avg_clv || 0) > 0.01 ? 'Beating market' :
+               (user.stats.avg_clv || 0) >= 0 ? 'At market' :
+               'Behind market'}
+            </div>
+            <div className="text-[10px] text-gray-600 mt-1">
+              Positive CLV = long-term profit
+            </div>
+          </div>
+
+          {/* Sharpe Ratio */}
+          <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/30">
+            <div className="text-xs text-muted mb-2 flex items-center gap-1">
+              <BarChart3 className="w-3 h-3" />
+              Sharpe Ratio
+            </div>
+            <div className={`text-2xl font-bold ${
+              (user.stats.sharpe_ratio || 0) >= 2 ? 'text-emerald-400' :
+              (user.stats.sharpe_ratio || 0) >= 1 ? 'text-amber-400' :
+              'text-gray-400'
+            }`}>
+              {(user.stats.sharpe_ratio || 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted mt-2">
+              {(user.stats.sharpe_ratio || 0) >= 2 ? 'Excellent' :
+               (user.stats.sharpe_ratio || 0) >= 1 ? 'Good' :
+               (user.stats.sharpe_ratio || 0) >= 0.5 ? 'Fair' :
+               'Needs improvement'}
+            </div>
+            <div className="text-[10px] text-gray-600 mt-1">
+              Risk-adjusted returns
+            </div>
+          </div>
+        </div>
+
+        {/* Info Box */}
+        <div className="mt-4 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+          <div className="flex items-start gap-2 text-xs text-cyan-300">
+            <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold mb-1">What these metrics mean:</p>
+              <ul className="space-y-1 text-gray-400">
+                <li><strong className="text-cyan-400">EV:</strong> Average expected profit per $100 wagered. Pro bettors target 3-5%+</li>
+                <li><strong className="text-cyan-400">CLV:</strong> Consistently beating closing line predicts long-term profitability</li>
+                <li><strong className="text-cyan-400">Sharpe:</strong> Higher ratio = better returns for risk taken. Above 1.0 is good</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Sharp Play of the Day */}
       {sharpPlay && (
         <div className="card-glass border-amber-500/30">
