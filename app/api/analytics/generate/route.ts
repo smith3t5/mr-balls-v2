@@ -69,6 +69,9 @@ export async function POST(request: NextRequest) {
     const weatherClient = new WeatherClient(db);
     const analyticsEngine = new AnalyticsEngine(kellyMultiplier, bankroll);
 
+    // Reset request counter for this generation
+    oddsClient.resetRequestCounter();
+
     // Fetch odds data
     console.log(`Fetching odds for sports: ${criteria.sports.join(', ')}`);
 
@@ -84,7 +87,17 @@ export async function POST(request: NextRequest) {
       markets.push(...criteria.extra_markets);
     }
 
-    let games = await oddsClient.getOddsForSports(criteria.sports, markets);
+    // Calculate required prop legs for breadth-first optimization
+    const totalMarkets = markets.length;
+    const propMarketCount = criteria.extra_markets?.length || 0;
+    const estimatedPropLegs = propMarketCount > 0
+      ? Math.ceil(criteria.legs * (propMarketCount / totalMarkets))
+      : 0;
+
+    let games = await oddsClient.getOddsForSports(criteria.sports, markets, {
+      sgpMode: criteria.sgp_mode,
+      requiredPropLegs: estimatedPropLegs,
+    });
 
     // If no games found and we requested props, try again with just basic markets
     if (games.length === 0 && criteria.extra_markets && criteria.extra_markets.length > 0) {
@@ -139,6 +152,10 @@ export async function POST(request: NextRequest) {
     // Generate smart parlay
     console.log('Running analytics engine...');
     const result = await analyticsEngine.generateSmartParlay(criteria, games, userStateCode);
+
+    // Get request stats for debugging
+    const requestStats = oddsClient.getRequestStats();
+    console.log(`API Requests: ${requestStats.used}/${requestStats.budget}`);
 
     // Return result
     return NextResponse.json({

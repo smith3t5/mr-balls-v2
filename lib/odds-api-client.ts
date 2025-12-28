@@ -4,6 +4,8 @@ import { Database } from './db';
 
 export class OddsAPIClient {
   private baseUrl = 'https://api.the-odds-api.com/v4';
+  private requestCount = 0;
+  private requestBudget = 50; // Conservative budget per generation request
 
   constructor(
     private apiKey: string,
@@ -11,59 +13,161 @@ export class OddsAPIClient {
   ) {}
 
   /**
-   * Get odds for multiple sports (cached)
+   * Get odds for multiple sports with intelligent prop handling
    */
   async getOddsForSports(
     sports: Sport[],
-    markets: string[] = ['h2h', 'spreads', 'totals']
+    markets: string[] = ['h2h', 'spreads', 'totals'],
+    options?: {
+      sgpMode?: 'none' | 'allow' | 'only';
+      requiredPropLegs?: number;
+    }
   ): Promise<GameData[]> {
     const allGames: GameData[] = [];
 
-    for (const sport of sports) {
-      const cacheKey = `odds_${sport}_${markets.join('_')}`;
-      const cached = await this.db.getCached<GameData[]>(cacheKey);
+    // Separate standard markets from props
+    const { standardMarkets, propMarkets } = this.separateMarkets(markets);
+    const hasProps = propMarkets.length > 0;
+    const wantsUniqueGames = options?.sgpMode === 'none';
+    const requiredPropLegs = options?.requiredPropLegs || 0;
 
-      if (cached) {
-        console.log(`Cache HIT: ${cacheKey}`);
-        allGames.push(...cached);
-        continue;
+    console.log(`Fetching: ${sports.length} sports, ${standardMarkets.length} standard markets, ${propMarkets.length} prop markets`);
+
+    for (const sport of sports) {
+      // Phase 1: Fetch standard markets (h2h, spreads, totals)
+      if (standardMarkets.length > 0) {
+        const standardGames = await this.fetchMarkets(sport, standardMarkets, 60); // 60s cache
+        allGames.push(...standardGames);
       }
 
-      console.log(`Cache MISS: ${cacheKey} - Fetching from API`);
-
-      try {
-        const url = new URL(`${this.baseUrl}/sports/${sport}/odds`);
-        url.searchParams.set('apiKey', this.apiKey);
-        url.searchParams.set('regions', 'us');
-        url.searchParams.set('markets', markets.join(','));
-        url.searchParams.set('oddsFormat', 'american');
-
-        const response = await fetch(url.toString());
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Odds API error for ${sport}:`, response.status, errorText);
-
-          // 422 typically means unsupported market
-          if (response.status === 422) {
-            console.error(`Some markets may not be available for ${sport}. Trying with basic markets only.`);
-          }
-          continue;
-        }
-
-        const data = await response.json();
-        const games = this.transformOddsAPIResponse(data, sport);
-
-        // Cache for 10 minutes (600s)
-        await this.db.setCache(cacheKey, games, 600);
-
-        allGames.push(...games);
-      } catch (error) {
-        console.error(`Error fetching odds for ${sport}:`, error);
+      // Phase 2: Fetch props with chunking and breadth-first strategy
+      if (hasProps && this.hasRequestBudget()) {
+        const propGames = await this.fetchPropsOptimized(
+          sport,
+          propMarkets,
+          wantsUniqueGames,
+          requiredPropLegs
+        );
+        allGames.push(...propGames);
       }
     }
 
+    console.log(`Total games fetched: ${allGames.length}, API requests used: ${this.requestCount}/${this.requestBudget}`);
     return allGames;
+  }
+
+  /**
+   * Fetch props with market chunking and breadth-first strategy
+   */
+  private async fetchPropsOptimized(
+    sport: Sport,
+    propMarkets: string[],
+    wantsUniqueGames: boolean,
+    requiredPropLegs: number
+  ): Promise<GameData[]> {
+    const allPropGames: GameData[] = [];
+
+    // Breadth-first mode: sample MANY events with FEW markets each
+    const breadthMode = wantsUniqueGames && requiredPropLegs > 0;
+    const targetUniqueEvents = breadthMode ? Math.min(40, requiredPropLegs + 4) : 0;
+
+    // Chunk prop markets to avoid 422 errors (6-8 markets per call)
+    const marketChunks = this.chunkArray(propMarkets, 6);
+    console.log(`Breadth mode: ${breadthMode}, Target events: ${targetUniqueEvents}, Market chunks: ${marketChunks.length}`);
+
+    if (breadthMode) {
+      // Breadth-first: Fetch 1 chunk for many events
+      const uniqueEventIds = new Set<string>();
+
+      for (const chunk of marketChunks) {
+        if (uniqueEventIds.size >= targetUniqueEvents) break;
+        if (!this.hasRequestBudget()) break;
+
+        const games = await this.fetchMarkets(sport, chunk, 75); // 75s cache for props
+
+        // Track unique events with props
+        for (const game of games) {
+          if (game.bookmakers.length > 0) {
+            uniqueEventIds.add(game.id);
+          }
+        }
+
+        allPropGames.push(...games);
+
+        // Early exit if we have enough unique prop events
+        if (uniqueEventIds.size >= targetUniqueEvents) {
+          console.log(`Early exit: ${uniqueEventIds.size} unique prop events collected`);
+          break;
+        }
+      }
+    } else {
+      // Depth-first: Fetch all chunks for fewer events
+      for (const chunk of marketChunks) {
+        if (!this.hasRequestBudget()) break;
+
+        const games = await this.fetchMarkets(sport, chunk, 75); // 75s cache for props
+        allPropGames.push(...games);
+      }
+    }
+
+    return allPropGames;
+  }
+
+  /**
+   * Fetch markets for a sport with caching
+   */
+  private async fetchMarkets(
+    sport: Sport,
+    markets: string[],
+    cacheTTL: number
+  ): Promise<GameData[]> {
+    const cacheKey = `odds_${sport}_${markets.sort().join('_')}`;
+    const cached = await this.db.getCached<GameData[]>(cacheKey);
+
+    if (cached) {
+      console.log(`Cache HIT: ${cacheKey}`);
+      return cached;
+    }
+
+    if (!this.hasRequestBudget()) {
+      console.warn(`Request budget exhausted (${this.requestCount}/${this.requestBudget})`);
+      return [];
+    }
+
+    console.log(`Cache MISS: ${cacheKey} - Fetching from API`);
+
+    try {
+      const url = new URL(`${this.baseUrl}/sports/${sport}/odds`);
+      url.searchParams.set('apiKey', this.apiKey);
+      url.searchParams.set('regions', 'us');
+      url.searchParams.set('markets', markets.join(','));
+      url.searchParams.set('oddsFormat', 'american');
+
+      this.requestCount++; // Track request
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Odds API error for ${sport}:`, response.status, errorText);
+
+        // 422 typically means unsupported market
+        if (response.status === 422) {
+          console.error(`Some markets unavailable for ${sport}. Markets: ${markets.join(', ')}`);
+        }
+        return [];
+      }
+
+      const data = await response.json();
+      const games = this.transformOddsAPIResponse(data, sport);
+
+      // Variable cache TTL based on market type
+      await this.db.setCache(cacheKey, games, cacheTTL);
+
+      return games;
+    } catch (error) {
+      console.error(`Error fetching ${sport} markets:`, error);
+      return [];
+    }
   }
 
   /**
@@ -175,5 +279,64 @@ export class OddsAPIClient {
       console.error('Error getting usage stats:', error);
       return { requests_used: 0, requests_remaining: 500 };
     }
+  }
+
+  /**
+   * Separate standard markets from prop markets
+   */
+  private separateMarkets(markets: string[]): {
+    standardMarkets: string[];
+    propMarkets: string[];
+  } {
+    const standardMarkets: string[] = [];
+    const propMarkets: string[] = [];
+
+    const standardMarketKeys = ['h2h', 'spreads', 'totals'];
+
+    for (const market of markets) {
+      if (standardMarketKeys.includes(market)) {
+        standardMarkets.push(market);
+      } else {
+        propMarkets.push(market);
+      }
+    }
+
+    return { standardMarkets, propMarkets };
+  }
+
+  /**
+   * Chunk array into smaller arrays
+   */
+  private chunkArray<T>(array: T[], chunkSize: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+      chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
+  }
+
+  /**
+   * Check if we have request budget remaining
+   */
+  private hasRequestBudget(): boolean {
+    return this.requestCount < this.requestBudget;
+  }
+
+  /**
+   * Get current request stats
+   */
+  getRequestStats(): { used: number; budget: number; remaining: number } {
+    return {
+      used: this.requestCount,
+      budget: this.requestBudget,
+      remaining: this.requestBudget - this.requestCount,
+    };
+  }
+
+  /**
+   * Reset request counter (called at start of each generation)
+   */
+  resetRequestCounter(): void {
+    this.requestCount = 0;
   }
 }
