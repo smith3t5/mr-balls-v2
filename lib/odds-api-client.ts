@@ -255,7 +255,8 @@ export class OddsAPIClient {
       const url = new URL(`${this.baseUrl}/sports/${sport}/events/${eventId}/odds`);
       url.searchParams.set('apiKey', this.apiKey);
       url.searchParams.set('regions', 'us');
-      url.searchParams.set('bookmakers', 'draftkings'); // DraftKings only for props (as per original)
+      // Fetch multiple bookmakers for proper value analysis (need 2+ for consensus)
+      url.searchParams.set('bookmakers', 'draftkings,fanduel,betmgm');
       url.searchParams.set('markets', markets.join(','));
       url.searchParams.set('oddsFormat', 'american');
 
