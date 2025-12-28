@@ -41,29 +41,29 @@ const BET_TYPES = [
 ];
 
 const EXTRA_MARKETS = [
-  // Basketball
-  { key: 'player_points', name: 'Player Points' },
-  { key: 'player_rebounds', name: 'Player Rebounds' },
-  { key: 'player_assists', name: 'Player Assists' },
-  { key: 'player_threes', name: 'Player 3-Pointers' },
-  { key: 'player_blocks', name: 'Player Blocks' },
-  { key: 'player_steals', name: 'Player Steals' },
-  { key: 'player_double_double', name: 'Player Double Double' },
+  // Basketball (DISABLED - Requires paid API tier)
+  // { key: 'player_points', name: 'Player Points' },
+  // { key: 'player_rebounds', name: 'Player Rebounds' },
+  // { key: 'player_assists', name: 'Player Assists' },
+  // { key: 'player_threes', name: 'Player 3-Pointers' },
+  // { key: 'player_blocks', name: 'Player Blocks' },
+  // { key: 'player_steals', name: 'Player Steals' },
+  // { key: 'player_double_double', name: 'Player Double Double' },
 
-  // Football (NFL/NCAAF)
-  { key: 'player_pass_tds', name: 'Pass Touchdowns' },
-  { key: 'player_pass_yds', name: 'Passing Yards' },
-  { key: 'player_pass_completions', name: 'Pass Completions' },
-  { key: 'player_pass_attempts', name: 'Pass Attempts' },
-  { key: 'player_pass_interceptions', name: 'Interceptions Thrown' },
-  { key: 'player_rush_yds', name: 'Rushing Yards' },
-  { key: 'player_rush_attempts', name: 'Rush Attempts' },
-  { key: 'player_receptions', name: 'Receptions' },
-  { key: 'player_reception_yds', name: 'Receiving Yards' },
-  { key: 'player_anytime_td', name: 'Anytime TD Scorer' },
-  { key: 'player_first_td', name: 'First TD Scorer' },
-  { key: 'player_last_td', name: 'Last TD Scorer' },
-  { key: 'player_kicking_points', name: 'Kicking Points' },
+  // Football (DISABLED - Requires paid API tier)
+  // { key: 'player_pass_tds', name: 'Pass Touchdowns' },
+  // { key: 'player_pass_yds', name: 'Passing Yards' },
+  // { key: 'player_pass_completions', name: 'Pass Completions' },
+  // { key: 'player_pass_attempts', name: 'Pass Attempts' },
+  // { key: 'player_pass_interceptions', name: 'Interceptions Thrown' },
+  // { key: 'player_rush_yds', name: 'Rushing Yards' },
+  // { key: 'player_rush_attempts', name: 'Rush Attempts' },
+  // { key: 'player_receptions', name: 'Receptions' },
+  // { key: 'player_reception_yds', name: 'Receiving Yards' },
+  // { key: 'player_anytime_td', name: 'Anytime TD Scorer' },
+  // { key: 'player_first_td', name: 'First TD Scorer' },
+  // { key: 'player_last_td', name: 'Last TD Scorer' },
+  // { key: 'player_kicking_points', name: 'Kicking Points' },
 
   // Baseball
   { key: 'batter_hits', name: 'Batter Hits' },
@@ -435,6 +435,10 @@ export default function Generator() {
 
             <div className="mt-4 pt-4 border-t border-slate-700/50">
               <h4 className="text-sm font-semibold mb-2 text-muted">Player Props</h4>
+              <div className="mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <p className="text-xs text-amber-400 font-semibold">⚠️ Player props require paid Odds API tier</p>
+                <p className="text-xs text-muted mt-1">Upgrade at the-odds-api.com to enable props</p>
+              </div>
               <div className="space-y-2">
                 {EXTRA_MARKETS.map(market => (
                   <label key={market.key} className="flex items-center gap-2 cursor-pointer group">
