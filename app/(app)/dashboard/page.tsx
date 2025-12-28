@@ -28,19 +28,23 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/users/me', { credentials: 'include' }).then(r => r.json()),
-      fetch('/api/bets?limit=5', { credentials: 'include' }).then(r => r.json()),
-      fetch('/api/sharp-play/daily', { credentials: 'include' }).then(r => r.json()),
-    ]).then(([userData, betsData, sharpPlayData]) => {
-      if (userData.success) setUser(userData.user);
-      if (betsData.success) setBets(betsData.bets);
-      if (sharpPlayData.success) setSharpPlay(sharpPlayData.sharp_play);
-    }).catch((error) => {
-      console.error('Failed to load dashboard data:', error);
-    }).finally(() => {
-      setLoading(false);
-    });
+    // Get user from localStorage
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+
+    // Get bets from localStorage (if any)
+    const storedBets = localStorage.getItem('bets');
+    if (storedBets) {
+      const allBets = JSON.parse(storedBets);
+      setBets(allBets.slice(0, 5)); // Show last 5 bets
+    }
+
+    // Mock sharp play for now
+    setSharpPlay(null);
+
+    setLoading(false);
   }, []);
 
   const lockSharpPlay = () => {
