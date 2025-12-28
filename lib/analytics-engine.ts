@@ -16,6 +16,7 @@ import {
   impliedProbability,
   calculateEdge,
 } from './betting-algorithms';
+import { TeamDataManager, analyzeSituationalAdvantage, type SituationalFactors } from './team-data';
 
 export interface ScoredBet extends BetLeg {
   edgeScore: number;
@@ -27,10 +28,12 @@ export interface ScoredBet extends BetLeg {
 export class AnalyticsEngine {
   private kellyMultiplier: number;
   private bankroll: number;
+  private teamData: TeamDataManager;
 
   constructor(kellyMultiplier: number = 0.25, bankroll: number = 1000) {
     this.kellyMultiplier = kellyMultiplier;
     this.bankroll = bankroll;
+    this.teamData = new TeamDataManager();
   }
 
   /**
@@ -168,6 +171,14 @@ export class AnalyticsEngine {
     const lineValue = this.calculateLineValue(bet, game);
     // ALWAYS include line value for transparency
     factors.push(lineValue);
+
+    // 1.5. Elo rating analysis (for moneyline and spread bets)
+    if (bet.market === 'h2h' || bet.market === 'spreads') {
+      const eloFactor = this.analyzeEloRatings(bet, game);
+      if (eloFactor && Math.abs(eloFactor.impact) > 0.5) {
+        factors.push(eloFactor);
+      }
+    }
 
     // 2. Sharp money analysis (simulated for now)
     const sharpMoney = this.analyzeSharpMoney(bet, game);
@@ -466,6 +477,92 @@ export class AnalyticsEngine {
       category: 'weather',
       description: descriptions.join('; ') || 'Good conditions',
       impact,
+    };
+  }
+
+  /**
+   * Analyze Elo ratings and matchup quality
+   */
+  private analyzeEloRatings(
+    bet: Partial<ScoredBet>,
+    game: GameData
+  ): AnalyticsFactor | null {
+    const matchup = this.teamData.getMatchupData(
+      game.home_team,
+      game.away_team,
+      bet.sport!
+    );
+
+    const eloDiff = matchup.elo_difference;
+    const homeWinProb = matchup.home_win_probability;
+
+    // Determine if bet aligns with Elo prediction
+    let impact = 0;
+    let description = '';
+    let type: 'positive' | 'negative' | 'neutral' = 'neutral';
+
+    if (bet.market === 'h2h') {
+      // Moneyline bet
+      const bettingOnHome = bet.rawData.outcome.name === game.home_team;
+
+      if (bettingOnHome && homeWinProb > 0.55) {
+        impact = (homeWinProb - 0.5) * 8; // Scale impact
+        description = `Elo favors ${game.home_team} (${(homeWinProb * 100).toFixed(1)}% win probability, +${eloDiff.toFixed(0)} Elo edge)`;
+        type = 'positive';
+      } else if (!bettingOnHome && homeWinProb < 0.45) {
+        impact = (0.5 - homeWinProb) * 8;
+        description = `Elo favors ${game.away_team} (${((1 - homeWinProb) * 100).toFixed(1)}% win probability, ${eloDiff.toFixed(0)} Elo underdog)`;
+        type = 'positive';
+      } else if (Math.abs(homeWinProb - 0.5) < 0.05) {
+        description = `Elo sees this as a toss-up (${(homeWinProb * 100).toFixed(1)}% vs ${((1 - homeWinProb) * 100).toFixed(1)}%)`;
+        type = 'neutral';
+        impact = 0;
+      } else {
+        // Betting against Elo prediction
+        description = `Elo model disagrees with this pick`;
+        type = 'negative';
+        impact = -1.5;
+      }
+    } else if (bet.market === 'spreads') {
+      // Spread bet - compare Elo implied spread to actual spread
+      // Rough conversion: 25 Elo points ≈ 1 point spread
+      const eloImpliedSpread = eloDiff / 25;
+      const actualSpread = bet.point || 0;
+      const spreadDiff = Math.abs(eloImpliedSpread - Math.abs(actualSpread));
+
+      if (spreadDiff > 2) {
+        description = `Elo model suggests ${spreadDiff.toFixed(1)} point difference from market spread`;
+        type = 'positive';
+        impact = Math.min(spreadDiff * 0.8, 3);
+      } else if (spreadDiff < 0.5) {
+        description = `Elo model aligns with market spread`;
+        type = 'neutral';
+        impact = 0.5;
+      }
+    }
+
+    // Add rivalry/division bonus
+    if (matchup.is_rivalry) {
+      description += ` • Rivalry game (tends to be closer)`;
+      if (bet.bet_kind === 'side') {
+        impact -= 0.5; // Favorites don't cover as well in rivalries
+      }
+    }
+
+    if (matchup.is_division) {
+      description += ` • Division game`;
+      if (bet.bet_kind === 'side') {
+        impact -= 0.3; // Division games tend to be tighter
+      }
+    }
+
+    if (Math.abs(impact) < 0.3) return null;
+
+    return {
+      type,
+      category: 'matchup',
+      description,
+      impact: Math.max(-5, Math.min(5, impact)),
     };
   }
 
