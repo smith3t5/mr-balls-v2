@@ -586,7 +586,30 @@ export class AnalyticsEngine {
       }
     }
 
-    // Fill remaining legs
+    // Fill remaining legs with sport diversity
+    const usedSports = new Set<string>();
+    const sportsRequested = new Set(scoredBets.map(b => b.sport));
+
+    // First pass: Try to get one leg from each sport for diversity
+    if (sgpMode === 'none' && sportsRequested.size > 1) {
+      for (const bet of scoredBets) {
+        if (parlay.length >= targetLegs) break;
+        if (parlay.some((p) => p.id === bet.id)) continue;
+        if (usedEvents.has(bet.event_id)) continue;
+        if (usedSports.has(bet.sport)) continue; // Skip if we already have this sport
+
+        parlay.push(bet);
+        usedEvents.add(bet.event_id);
+        usedSports.add(bet.sport);
+
+        if (!usedEventMarkets.has(bet.event_id)) {
+          usedEventMarkets.set(bet.event_id, new Set());
+        }
+        usedEventMarkets.get(bet.event_id)!.add(bet.market);
+      }
+    }
+
+    // Second pass: Fill remaining legs (can now repeat sports if needed)
     for (const bet of scoredBets) {
       if (parlay.length >= targetLegs) break;
 
@@ -595,7 +618,17 @@ export class AnalyticsEngine {
 
       // SGP constraints
       if (sgpMode === 'none' && usedEvents.has(bet.event_id)) continue;
-      if (sgpMode === 'only' && usedEvents.size > 0 && !usedEvents.has(bet.event_id)) continue;
+
+      // Fix SGP 'only' mode: after first leg, only allow legs from SAME event
+      if (sgpMode === 'only') {
+        if (usedEvents.size === 0) {
+          // First leg - any event is fine
+        } else {
+          // After first leg - must be from the same event
+          const firstEventId = Array.from(usedEvents)[0];
+          if (bet.event_id !== firstEventId) continue;
+        }
+      }
 
       // Conflict detection (same event, conflicting markets)
       if (usedEvents.has(bet.event_id)) {
