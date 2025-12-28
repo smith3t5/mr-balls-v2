@@ -3,12 +3,24 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { US_STATES } from '@/lib/state-regulations';
+
+const HARDCODED_USER = {
+  username: 'smith3t5',
+  password: 'Bomberxc09!',
+  id: 'user-1',
+  stats: {
+    wins: 0,
+    losses: 0,
+    roi: 0,
+    total_bets: 0,
+    units_wagered: 0,
+    units_profit: 0,
+  }
+};
 
 export default function Home() {
-  const [nfcTag, setNfcTag] = useState('');
   const [username, setUsername] = useState('');
-  const [stateCode, setStateCode] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -19,21 +31,15 @@ export default function Home() {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/nfc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ nfc_tag_id: nfcTag, username, state_code: stateCode }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed');
+      // Simple hardcoded auth check
+      if (username === HARDCODED_USER.username && password === HARDCODED_USER.password) {
+        // Store user in localStorage
+        localStorage.setItem('user', JSON.stringify(HARDCODED_USER));
+        // Redirect to dashboard
+        router.push('/dashboard');
+      } else {
+        throw new Error('Invalid username or password');
       }
-
-      // Redirect to dashboard
-      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -97,27 +103,10 @@ export default function Home() {
             {/* Card */}
             <div className="relative bg-gradient-to-br from-primary-800/90 to-primary-900/90 backdrop-blur-xl rounded-2xl border border-primary-700/50 shadow-2xl p-8">
               <form onSubmit={handleAuth} className="space-y-6">
-                {/* Access Code Input */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-300 mb-3">
-                    Access Code
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      value={nfcTag}
-                      onChange={(e) => setNfcTag(e.target.value)}
-                      className="w-full px-5 py-4 rounded-xl bg-primary-900/80 border border-primary-600/50 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all font-medium"
-                      placeholder="Enter your exclusive code"
-                      required
-                    />
-                  </div>
-                </div>
-
                 {/* Username Input */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-3">
-                    Username <span className="text-xs text-gray-500 font-normal ml-1">(new users only)</span>
+                    Username
                   </label>
                   <div className="relative">
                     <input
@@ -125,34 +114,27 @@ export default function Home() {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       className="w-full px-5 py-4 rounded-xl bg-primary-900/80 border border-primary-600/50 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all font-medium"
-                      placeholder="Choose your display name"
+                      placeholder="Enter your username"
+                      required
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2 ml-1">
-                    Leave empty if you already have an account
-                  </p>
                 </div>
 
-                {/* State Selection */}
+                {/* Password Input */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-3">
-                    State <span className="text-xs text-gray-500 font-normal ml-1">(for betting regulations)</span>
+                    Password
                   </label>
-                  <select
-                    value={stateCode}
-                    onChange={(e) => setStateCode(e.target.value)}
-                    className="w-full px-5 py-4 rounded-xl bg-primary-900/80 border border-primary-600/50 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all font-medium"
-                  >
-                    <option value="">Select your state</option>
-                    {US_STATES.map(state => (
-                      <option key={state.code} value={state.code}>
-                        {state.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-2 ml-1">
-                    Determines available bet types based on state regulations
-                  </p>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-5 py-4 rounded-xl bg-primary-900/80 border border-primary-600/50 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all font-medium"
+                      placeholder="Enter your password"
+                      required
+                    />
+                  </div>
                 </div>
 
                 {/* Error Message */}

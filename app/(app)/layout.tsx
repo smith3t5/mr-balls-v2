@@ -24,21 +24,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/session', { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setUser(data.user);
-        } else {
-          router.push('/');
-        }
-      })
-      .catch(() => router.push('/'))
-      .finally(() => setLoading(false));
+    // Check localStorage for user
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+      setLoading(false);
+    } else {
+      router.push('/');
+    }
   }, [router]);
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+  const handleLogout = () => {
+    localStorage.removeItem('user');
     router.push('/');
   };
 
