@@ -19,6 +19,8 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  Plus,
+  X,
 } from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 import { formatCurrency } from '@/lib/utils';
@@ -35,6 +37,28 @@ export default function Portfolio() {
   const [deleting, setDeleting] = useState(false);
   const [updatingLeg, setUpdatingLeg] = useState<string | null>(null);
   const [autoChecking, setAutoChecking] = useState(false);
+  const [showManualBetModal, setShowManualBetModal] = useState(false);
+
+  // Manual bet entry state
+  const [betType, setBetType] = useState<'single' | 'parlay'>('single');
+  const [legs, setLegs] = useState<Array<{
+    sport: string;
+    eventDate: string;
+    eventName: string;
+    pick: string;
+    odds: string;
+  }>>([{
+    sport: 'NFL',
+    eventDate: '',
+    eventName: '',
+    pick: '',
+    odds: ''
+  }]);
+  const [stake, setStake] = useState('');
+  const [sportsbook, setSportsbook] = useState('');
+  const [betLink, setBetLink] = useState('');
+  const [notes, setNotes] = useState('');
+  const [submittingManualBet, setSubmittingManualBet] = useState(false);
 
   useEffect(() => {
     loadBets();
@@ -222,6 +246,112 @@ export default function Portfolio() {
     }
   };
 
+  // Manual bet entry functions
+  const resetManualBetForm = () => {
+    setBetType('single');
+    setLegs([{
+      sport: 'NFL',
+      eventDate: '',
+      eventName: '',
+      pick: '',
+      odds: ''
+    }]);
+    setStake('');
+    setSportsbook('');
+    setBetLink('');
+    setNotes('');
+  };
+
+  const addLeg = () => {
+    setLegs([...legs, {
+      sport: 'NFL',
+      eventDate: '',
+      eventName: '',
+      pick: '',
+      odds: ''
+    }]);
+  };
+
+  const removeLeg = (index: number) => {
+    if (legs.length > 1) {
+      setLegs(legs.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateLeg = (index: number, field: keyof typeof legs[0], value: string) => {
+    const newLegs = [...legs];
+    newLegs[index] = { ...newLegs[index], [field]: value };
+    setLegs(newLegs);
+  };
+
+  const handleManualBetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate
+    if (!stake || parseFloat(stake) <= 0) {
+      toast.error('Please enter a valid stake amount');
+      return;
+    }
+
+    if (legs.some(leg => !leg.eventName || !leg.pick || !leg.odds)) {
+      toast.error('Please fill in all leg details');
+      return;
+    }
+
+    // Calculate parlay odds
+    let parlayOdds = 1;
+    for (const leg of legs) {
+      const odds = parseFloat(leg.odds);
+      const decimalOdds = odds > 0 ? 1 + odds / 100 : 1 + 100 / Math.abs(odds);
+      parlayOdds *= decimalOdds;
+    }
+    const americanOdds = parlayOdds >= 2
+      ? Math.round((parlayOdds - 1) * 100)
+      : -Math.round(100 / (parlayOdds - 1));
+
+    const potentialReturn = parseFloat(stake) * parlayOdds;
+
+    setSubmittingManualBet(true);
+    try {
+      const response = await fetch('/api/bets/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bet_type: betType,
+          legs: legs.map(leg => ({
+            sport: leg.sport,
+            event_date: leg.eventDate,
+            event_name: leg.eventName,
+            pick: leg.pick,
+            odds: parseFloat(leg.odds),
+          })),
+          stake: parseFloat(stake),
+          odds: americanOdds,
+          potential_return: potentialReturn,
+          sportsbook,
+          bet_link: betLink || null,
+          notes: notes || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(`${betType === 'single' ? 'Bet' : 'Parlay'} added successfully!`);
+        await loadBets();
+        setShowManualBetModal(false);
+        resetManualBetForm();
+      } else {
+        toast.error(data.error || 'Failed to add bet');
+      }
+    } catch (err) {
+      console.error('Failed to submit manual bet:', err);
+      toast.error('Failed to add bet');
+    } finally {
+      setSubmittingManualBet(false);
+    }
+  };
+
   const stats = {
     total: bets.length,
     pending: bets.filter((b) => b.status === 'pending').length,
@@ -253,7 +383,14 @@ export default function Portfolio() {
             <RefreshCw className={`w-4 h-4 ${autoChecking ? 'animate-spin' : ''}`} />
             {autoChecking ? 'Checking...' : 'Auto-Check Results'}
           </button>
-          <button onClick={tailBet} className="btn-primary btn-sm flex items-center gap-2">
+          <button
+            onClick={() => setShowManualBetModal(true)}
+            className="btn-primary btn-sm flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Bet
+          </button>
+          <button onClick={tailBet} className="btn-secondary btn-sm flex items-center gap-2">
             <Target className="w-4 h-4" />
             Tail a Bet
           </button>
@@ -557,6 +694,242 @@ export default function Portfolio() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Manual Bet Entry Modal */}
+      {showManualBetModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Plus className="w-6 h-6 text-amber-500" />
+                Add Manual Bet
+              </h2>
+              <button
+                onClick={() => setShowManualBetModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualBetSubmit} className="p-6 space-y-6">
+              {/* Bet Type Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Bet Type
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBetType('single');
+                      setLegs([legs[0]]);
+                    }}
+                    className={betType === 'single' ? 'btn-primary' : 'btn-secondary'}
+                  >
+                    Single Bet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBetType('parlay');
+                      if (legs.length === 1) addLeg();
+                    }}
+                    className={betType === 'parlay' ? 'btn-primary' : 'btn-secondary'}
+                  >
+                    Parlay
+                  </button>
+                </div>
+              </div>
+
+              {/* Legs */}
+              {legs.map((leg, index) => (
+                <div key={index} className="border border-slate-700 rounded-lg p-4 space-y-4">
+                  {betType === 'parlay' && (
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-bold text-amber-500">Leg {index + 1}</h3>
+                      {legs.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeLeg(index)}
+                          className="text-red-400 hover:text-red-300 text-xs"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Sport
+                      </label>
+                      <select
+                        className="input"
+                        value={leg.sport}
+                        onChange={(e) => updateLeg(index, 'sport', e.target.value)}
+                      >
+                        <option value="NFL">NFL</option>
+                        <option value="NBA">NBA</option>
+                        <option value="NHL">NHL</option>
+                        <option value="MLB">MLB</option>
+                        <option value="NCAAF">NCAAF</option>
+                        <option value="NCAAB">NCAAB</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Event Date
+                      </label>
+                      <input
+                        type="datetime-local"
+                        className="input"
+                        value={leg.eventDate}
+                        onChange={(e) => updateLeg(index, 'eventDate', e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Game/Event (e.g., "Chiefs @ Bills")
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Team A @ Team B"
+                      value={leg.eventName}
+                      onChange={(e) => updateLeg(index, 'eventName', e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Pick/Selection
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="e.g., Patrick Mahomes Over 250.5 Passing Yards"
+                      value={leg.pick}
+                      onChange={(e) => updateLeg(index, 'pick', e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Odds (American)
+                    </label>
+                    <input
+                      type="number"
+                      className="input"
+                      placeholder="-110"
+                      value={leg.odds}
+                      onChange={(e) => updateLeg(index, 'odds', e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {/* Add Leg Button */}
+              {betType === 'parlay' && (
+                <button
+                  type="button"
+                  onClick={addLeg}
+                  className="w-full btn-secondary flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Another Leg
+                </button>
+              )}
+
+              {/* Bet-level details */}
+              <div className="border-t border-slate-700 pt-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Stake ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    placeholder="10.00"
+                    value={stake}
+                    onChange={(e) => setStake(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Sportsbook
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="DraftKings, FanDuel, etc."
+                    value={sportsbook}
+                    onChange={(e) => setSportsbook(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Bet Slip Link (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    className="input"
+                    placeholder="https://..."
+                    value={betLink}
+                    onChange={(e) => setBetLink(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    className="input resize-none"
+                    rows={3}
+                    placeholder="Add any notes about this bet..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  ></textarea>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowManualBetModal(false);
+                    resetManualBetForm();
+                  }}
+                  className="btn-secondary flex-1"
+                  disabled={submittingManualBet}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary flex-1"
+                  disabled={submittingManualBet}
+                >
+                  {submittingManualBet ? 'Adding...' : 'Add Bet'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

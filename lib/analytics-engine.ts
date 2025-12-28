@@ -995,10 +995,84 @@ export class AnalyticsEngine {
       return `${outcome.name} ${outcome.point}`;
     }
 
-    // Props
+    // Props - add descriptive label
     const participant = outcome.participant || outcome.description || '';
+    const descriptor = this.getMarketDescriptor(market);
     const point = outcome.point ? ` ${outcome.point}` : '';
-    return `${participant} ${outcome.name}${point}`.trim();
+
+    if (descriptor && participant) {
+      return `${participant} ${outcome.name} ${point} ${descriptor}`.trim();
+    } else if (descriptor) {
+      return `${outcome.name} ${point} ${descriptor}`.trim();
+    } else {
+      return `${participant} ${outcome.name}${point}`.trim();
+    }
+  }
+
+  private getMarketDescriptor(market: Market): string | null {
+    const descriptors: Record<string, string> = {
+      // Passing
+      'player_pass_yds': 'Passing Yards',
+      'player_pass_tds': 'Passing TDs',
+      'player_pass_completions': 'Completions',
+      'player_pass_attempts': 'Pass Attempts',
+      'player_pass_longest_completion': 'Longest Completion',
+      'player_pass_interceptions': 'Interceptions',
+
+      // Rushing
+      'player_rush_yds': 'Rushing Yards',
+      'player_rush_attempts': 'Rush Attempts',
+      'player_rush_longest': 'Longest Rush',
+
+      // Receiving
+      'player_receptions': 'Receptions',
+      'player_reception_yds': 'Receiving Yards',
+      'player_reception_longest': 'Longest Reception',
+
+      // Touchdowns
+      'player_anytime_td': 'Anytime TD',
+      'player_first_td': 'First TD',
+      'player_last_td': 'Last TD',
+
+      // Kicking
+      'player_field_goals': 'Field Goals Made',
+      'player_kicking_points': 'Kicking Points',
+
+      // Basketball
+      'player_points': 'Points',
+      'player_rebounds': 'Rebounds',
+      'player_assists': 'Assists',
+      'player_threes': '3-Pointers Made',
+      'player_steals': 'Steals',
+      'player_blocks': 'Blocks',
+      'player_turnovers': 'Turnovers',
+      'player_points_rebounds_assists': 'Pts+Rebs+Asts',
+      'player_points_rebounds': 'Pts+Rebs',
+      'player_points_assists': 'Pts+Asts',
+      'player_rebounds_assists': 'Rebs+Asts',
+
+      // Hockey
+      'player_points_nhl': 'Points',
+      'player_shots_on_goal': 'Shots on Goal',
+      'player_blocked_shots': 'Blocked Shots',
+      'player_goalie_saves': 'Saves',
+
+      // Baseball
+      'batter_home_runs': 'Home Runs',
+      'batter_hits': 'Hits',
+      'batter_total_bases': 'Total Bases',
+      'batter_rbis': 'RBIs',
+      'batter_runs_scored': 'Runs Scored',
+      'batter_stolen_bases': 'Stolen Bases',
+      'batter_strikeouts': 'Strikeouts',
+      'pitcher_strikeouts': 'Pitcher Strikeouts',
+      'pitcher_hits_allowed': 'Hits Allowed',
+      'pitcher_walks': 'Walks',
+      'pitcher_earned_runs': 'Earned Runs',
+      'pitcher_outs': 'Outs Recorded',
+    };
+
+    return descriptors[market] || null;
   }
 
   private isOutdoorSport(sport: Sport): boolean {
