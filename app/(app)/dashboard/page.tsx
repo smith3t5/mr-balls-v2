@@ -29,9 +29,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/users/me').then(r => r.json()),
-      fetch('/api/bets?limit=5').then(r => r.json()),
-      fetch('/api/sharp-play/daily').then(r => r.json()),
+      fetch('/api/users/me', { credentials: 'include' }).then(r => r.json()),
+      fetch('/api/bets?limit=5', { credentials: 'include' }).then(r => r.json()),
+      fetch('/api/sharp-play/daily', { credentials: 'include' }).then(r => r.json()),
     ]).then(([userData, betsData, sharpPlayData]) => {
       if (userData.success) setUser(userData.user);
       if (betsData.success) setBets(betsData.bets);
