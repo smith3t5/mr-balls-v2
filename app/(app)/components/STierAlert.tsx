@@ -35,7 +35,7 @@ export default function STierAlert() {
   if (!alert || dismissed) return null;
 
   return (
-    <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 px-4 max-w-2xl">
+    <div className="fixed top-32 left-1/2 transform -translate-x-1/2 z-50 px-4 max-w-2xl">
       <div className="bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 rounded-lg shadow-2xl border-4 border-yellow-300">
         <div className="relative p-6">
           {/* Close button - highly visible */}
