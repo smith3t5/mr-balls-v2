@@ -35,8 +35,8 @@ export default function STierAlert() {
   if (!alert || dismissed) return null;
 
   return (
-    <div className="fixed top-20 left-0 right-0 z-50 px-4 animate-bounce">
-      <div className="max-w-4xl mx-auto bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 rounded-lg shadow-2xl border-4 border-yellow-300 animate-pulse">
+    <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 px-4 max-w-2xl">
+      <div className="bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 rounded-lg shadow-2xl border-4 border-yellow-300">
         <div className="relative p-6">
           {/* Close button */}
           <button
@@ -46,17 +46,14 @@ export default function STierAlert() {
             <X className="w-6 h-6" />
           </button>
 
-          {/* Outrageous header */}
-          <div className="text-center mb-4">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <Zap className="w-12 h-12 text-slate-900 animate-pulse" />
-              <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">
-                Listen up you stupid fucks!!!
+          {/* Header */}
+          <div className="text-center mb-3">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Zap className="w-8 h-8 text-slate-900" />
+              <h2 className="text-2xl font-black text-slate-900 uppercase">
+                S-Tier Bet Detected!
               </h2>
-              <Zap className="w-12 h-12 text-slate-900 animate-pulse" />
-            </div>
-            <div className="text-2xl font-bold text-slate-900 bg-white/30 inline-block px-6 py-2 rounded-full">
-              🚨 S-TIER BET DETECTED 🚨
+              <Zap className="w-8 h-8 text-slate-900" />
             </div>
           </div>
 
@@ -95,11 +92,14 @@ export default function STierAlert() {
               </div>
             </div>
 
-            {/* Analysis */}
+            {/* Analysis - Most Important Part */}
             {alert.analysis && (
-              <div className="mt-4 p-4 bg-slate-100 rounded-lg">
-                <div className="text-sm font-semibold text-slate-700 mb-1">Why This Bet Slaps:</div>
-                <div className="text-sm text-slate-600">{alert.analysis}</div>
+              <div className="mt-4 p-4 bg-emerald-50 rounded-lg border-2 border-emerald-300">
+                <div className="text-base font-bold text-emerald-900 mb-2 flex items-center gap-2">
+                  <Zap className="w-5 h-5" />
+                  Why This Bet is S-Tier:
+                </div>
+                <div className="text-base text-emerald-800 font-medium leading-relaxed">{alert.analysis}</div>
               </div>
             )}
 
