@@ -350,6 +350,17 @@ export class AnalyticsEngine {
     }
 
     if (allOdds.length < 2) {
+      // For props, single bookmaker is acceptable (props are harder to price)
+      // Don't penalize with 0 impact - return slight positive for props
+      if (bet.bet_kind === 'prop' && allOdds.length === 1) {
+        return {
+          type: 'neutral',
+          category: 'value',
+          description: 'Single bookmaker (props often have limited markets)',
+          impact: 0.5,  // Small positive for prop availability
+        };
+      }
+
       return {
         type: 'neutral',
         category: 'value',
@@ -1022,23 +1033,26 @@ export class AnalyticsEngine {
   }
 
   /**
-   * Grade a bet based on EV, edge, and confidence
-   * S = Elite (5%+ EV, high confidence)
-   * A = Excellent (3-5% EV)
-   * B = Good (2-3% EV)
-   * C = Decent (1-2% EV)
-   * D = Marginal (0-1% EV)
+   * Grade a bet based on confidence and analytical factors
+   * Focus on probability of hitting vs odds, not just raw EV
+   *
+   * S = Elite (strong analytical edge)
+   * A = Excellent (good analytical support)
+   * B = Good (some analytical edge)
+   * C = Decent (slight edge or fair)
+   * D = Marginal (no edge)
    */
   private gradeBet(
     expectedValue: number,
     edge: number,
     confidenceScore: number
   ): 'S' | 'A' | 'B' | 'C' | 'D' {
-    // More lenient grading based on EV
-    if (expectedValue >= 5 && confidenceScore >= 6) return 'S';
-    if (expectedValue >= 3) return 'A';
-    if (expectedValue >= 2) return 'B';
-    if (expectedValue >= 1) return 'C';
+    // Grade primarily on confidence score (analytical factors)
+    // EV is less important than quality of analysis
+    if (confidenceScore >= 8) return 'S';
+    if (confidenceScore >= 7) return 'A';
+    if (confidenceScore >= 6) return 'B';
+    if (confidenceScore >= 5) return 'C';
     return 'D';
   }
 }
