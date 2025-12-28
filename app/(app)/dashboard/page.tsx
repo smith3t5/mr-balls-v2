@@ -138,6 +138,100 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Performance Overview Chart */}
+      {user.stats.total_bets > 0 && (
+        <div className="card-glass">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-emerald-400" />
+            Performance Overview
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Win Rate Visualization */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-300 mb-3">Win Distribution</h3>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Wins ({user.stats.wins})
+                    </span>
+                    <span className="text-emerald-400">{((user.stats.wins / user.stats.total_bets) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-green-500"
+                      style={{ width: `${(user.stats.wins / user.stats.total_bets) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-red-400 font-semibold flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      Losses ({user.stats.losses})
+                    </span>
+                    <span className="text-red-400">{((user.stats.losses / user.stats.total_bets) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-red-500 to-rose-500"
+                      style={{ width: `${(user.stats.losses / user.stats.total_bets) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {user.stats.pushes > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between text-sm mb-2">
+                      <span className="text-gray-400 font-semibold flex items-center gap-1">
+                        <Info className="w-4 h-4" />
+                        Pushes ({user.stats.pushes})
+                      </span>
+                      <span className="text-gray-400">{((user.stats.pushes / user.stats.total_bets) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-gray-500 to-slate-500"
+                        style={{ width: `${(user.stats.pushes / user.stats.total_bets) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Units Profit Chart */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-300 mb-3">Units Performance</h3>
+              <div className="p-6 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/30">
+                <div className="text-center mb-4">
+                  <div className={`text-4xl font-bold ${user.stats.units_profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {user.stats.units_profit >= 0 ? '+' : ''}{user.stats.units_profit.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">Total Units</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="text-center p-3 rounded-lg bg-slate-800/50">
+                    <div className="text-gray-400 mb-1">Wagered</div>
+                    <div className="text-white font-semibold">{user.stats.units_wagered.toFixed(1)}U</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-slate-800/50">
+                    <div className="text-gray-400 mb-1">ROI</div>
+                    <div className={`font-semibold ${user.stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {user.stats.roi >= 0 ? '+' : ''}{user.stats.roi.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Advanced Analytics Section */}
       <div className="card-glass">
         <div className="flex items-center gap-3 mb-6">
