@@ -40,12 +40,29 @@ const BET_TYPES = [
   { key: 'moneyline', name: 'Moneyline' },
 ];
 
-// Player props temporarily disabled - requires higher Odds API tier
-// Current $30/month plan only includes standard markets (h2h, spreads, totals)
-// Contact support@the-odds-api.com to inquire about prop betting access
-const EXTRA_MARKETS: { key: string; name: string }[] = [
-  // Props disabled - API tier doesn't support them
-  // Uncomment when upgraded to a plan that includes player props
+// Player props now use event-specific endpoint (works on all API tiers!)
+const EXTRA_MARKETS = [
+  // Basketball
+  { key: 'player_points', name: 'Player Points' },
+  { key: 'player_rebounds', name: 'Player Rebounds' },
+  { key: 'player_assists', name: 'Player Assists' },
+  { key: 'player_threes', name: 'Player 3-Pointers' },
+
+  // Football (NFL/NCAAF)
+  { key: 'player_pass_tds', name: 'Pass Touchdowns' },
+  { key: 'player_pass_yds', name: 'Passing Yards' },
+  { key: 'player_rush_yds', name: 'Rushing Yards' },
+  { key: 'player_reception_yds', name: 'Receiving Yards' },
+  { key: 'player_receptions', name: 'Receptions' },
+  { key: 'player_anytime_td', name: 'Anytime TD Scorer' },
+
+  // Baseball
+  { key: 'pitcher_strikeouts', name: 'Pitcher Strikeouts' },
+  { key: 'batter_home_runs', name: 'Batter Home Runs' },
+
+  // Hockey
+  { key: 'player_shots_on_goal', name: 'Shots on Goal' },
+  { key: 'player_points_hockey', name: 'Points (G+A)' },
 ];
 
 const LOADING_MESSAGES = [

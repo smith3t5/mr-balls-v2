@@ -59,6 +59,7 @@ export class OddsAPIClient {
 
   /**
    * Fetch props with market chunking and breadth-first strategy
+   * Uses event-specific endpoint which works on lower API tiers
    */
   private async fetchPropsOptimized(
     sport: Sport,
@@ -66,50 +67,62 @@ export class OddsAPIClient {
     wantsUniqueGames: boolean,
     requiredPropLegs: number
   ): Promise<GameData[]> {
-    const allPropGames: GameData[] = [];
+    console.log(`Fetching props for ${sport} using event-specific endpoint`);
+
+    // Step 1: Get list of upcoming events
+    const events = await this.getUpcomingGames(sport);
+    if (events.length === 0) {
+      console.log(`No events found for ${sport}`);
+      return [];
+    }
+
+    console.log(`Found ${events.length} events for ${sport}`);
+
+    const gamesMap = new Map<string, GameData>();
 
     // Breadth-first mode: sample MANY events with FEW markets each
     const breadthMode = wantsUniqueGames && requiredPropLegs > 0;
-    const targetUniqueEvents = breadthMode ? Math.min(40, requiredPropLegs + 4) : 0;
+    const targetUniqueEvents = breadthMode ? Math.min(40, requiredPropLegs + 4) : Math.min(20, events.length);
 
-    // Chunk prop markets to avoid 422 errors (6-8 markets per call)
+    // Chunk prop markets (6 markets per call as per original code)
     const marketChunks = this.chunkArray(propMarkets, 6);
     console.log(`Breadth mode: ${breadthMode}, Target events: ${targetUniqueEvents}, Market chunks: ${marketChunks.length}`);
 
-    if (breadthMode) {
-      // Breadth-first: Fetch 1 chunk for many events
-      const uniqueEventIds = new Set<string>();
+    let eventsProcessed = 0;
+    let propsFound = 0;
 
-      for (const chunk of marketChunks) {
-        if (uniqueEventIds.size >= targetUniqueEvents) break;
+    // Step 2: Fetch props for each event using event-specific endpoint
+    for (const event of events) {
+      if (eventsProcessed >= targetUniqueEvents) break;
+      if (!this.hasRequestBudget()) break;
+
+      // In breadth mode, fetch fewer market chunks per event
+      // In depth mode, fetch all chunks for each event
+      const chunksToFetch = breadthMode ? marketChunks.slice(0, 1) : marketChunks;
+
+      for (const chunk of chunksToFetch) {
         if (!this.hasRequestBudget()) break;
 
-        const games = await this.fetchMarkets(sport, chunk, 75); // 75s cache for props
+        const game = await this.fetchEventProps(sport, event.id, chunk, 75);
 
-        // Track unique events with props
-        for (const game of games) {
-          if (game.bookmakers.length > 0) {
-            uniqueEventIds.add(game.id);
-          }
-        }
-
-        allPropGames.push(...games);
-
-        // Early exit if we have enough unique prop events
-        if (uniqueEventIds.size >= targetUniqueEvents) {
-          console.log(`Early exit: ${uniqueEventIds.size} unique prop events collected`);
-          break;
+        if (game && game.bookmakers.length > 0) {
+          // Merge this game's prop data
+          this.mergeGamesIntoMap(gamesMap, [game]);
+          propsFound++;
         }
       }
-    } else {
-      // Depth-first: Fetch all chunks for fewer events
-      for (const chunk of marketChunks) {
-        if (!this.hasRequestBudget()) break;
 
-        const games = await this.fetchMarkets(sport, chunk, 75); // 75s cache for props
-        allPropGames.push(...games);
+      eventsProcessed++;
+
+      // Early exit if breadth mode and we have enough events
+      if (breadthMode && gamesMap.size >= targetUniqueEvents) {
+        console.log(`Early exit: ${gamesMap.size} unique prop events collected`);
+        break;
       }
     }
+
+    const allPropGames = Array.from(gamesMap.values());
+    console.log(`✅ Fetched props for ${eventsProcessed} events, found props in ${propsFound} calls, ${allPropGames.length} unique games`);
 
     return allPropGames;
   }
@@ -214,6 +227,68 @@ export class OddsAPIClient {
     } catch (error) {
       console.error(`Error fetching games for ${sport}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Fetch props for a specific event using event-specific endpoint
+   * This endpoint has different access rules and works on lower API tiers
+   */
+  private async fetchEventProps(
+    sport: Sport,
+    eventId: string,
+    markets: string[],
+    cacheTTL: number
+  ): Promise<GameData | null> {
+    const cacheKey = `event_props_${sport}_${eventId}_${markets.sort().join('_')}`;
+    const cached = await this.db.getCached<GameData>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    if (!this.hasRequestBudget()) {
+      return null;
+    }
+
+    try {
+      const url = new URL(`${this.baseUrl}/sports/${sport}/events/${eventId}/odds`);
+      url.searchParams.set('apiKey', this.apiKey);
+      url.searchParams.set('regions', 'us');
+      url.searchParams.set('bookmakers', 'draftkings'); // DraftKings only for props (as per original)
+      url.searchParams.set('markets', markets.join(','));
+      url.searchParams.set('oddsFormat', 'american');
+
+      this.requestCount++;
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        if (response.status !== 422) { // Don't log 422 as errors (just unavailable)
+          console.error(`Event props error for ${sport}/${eventId}:`, response.status);
+        }
+        return null;
+      }
+
+      const data = await response.json();
+
+      // Transform single event response to GameData format
+      const game: GameData = {
+        id: data.id,
+        sport,
+        commence_time: new Date(data.commence_time).getTime(),
+        home_team: data.home_team,
+        away_team: data.away_team,
+        weather: null,
+        bookmakers: this.transformBookmakers(data.bookmakers || []),
+      };
+
+      // Cache successfully fetched props
+      await this.db.setCache(cacheKey, game, cacheTTL);
+
+      return game;
+    } catch (error) {
+      console.error(`Error fetching event props for ${sport}/${eventId}:`, error);
+      return null;
     }
   }
 
