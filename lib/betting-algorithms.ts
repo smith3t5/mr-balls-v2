@@ -75,7 +75,7 @@ export function kellyBetSize(
   trueProbability: number,
   americanOdds: number,
   kellyFraction: number = 0.25,
-  minEdge: number = 0.02,
+  minEdge: number = 0.001, // Lowered from 2% to 0.1% - trust analytical grading
   maxBet: number = 0.05
 ): {
   fraction: number;
