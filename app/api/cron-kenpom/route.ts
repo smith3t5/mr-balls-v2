@@ -1,69 +1,96 @@
 /**
  * app/api/cron-kenpom/route.ts
  *
- * KenPom sync endpoint — callable manually via POST or by the
- * Cloudflare Pages cron trigger.
- *
- * POST /api/cron-kenpom  — trigger a sync (requires Authorization header)
- * GET  /api/cron-kenpom  — check sync status (requires Authorization header)
+ * Diagnostic version — surfaces the actual error instead of a generic 500.
+ * Replace with the clean version once we know what's failing.
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { syncKenPomData, getLastSyncTime } from '@/lib/kenpom-sync';
-import { getCloudflareContext } from '@cloudflare/next-on-pages';
 
 export const runtime = 'edge';
 
-function unauthorized() {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-}
-
-function checkAuth(request: NextRequest, cronSecret: string): boolean {
-  const auth  = request.headers.get('Authorization') ?? '';
-  const token = auth.replace('Bearer ', '').trim();
-  return token.length > 0 && token === cronSecret;
-}
-
 export async function POST(request: NextRequest) {
-  const { env } = getCloudflareContext();
+  try {
+    // Step 1: Check auth header is present
+    const auth = request.headers.get('Authorization');
+    if (!auth) {
+      return NextResponse.json({ error: 'No Authorization header' }, { status: 401 });
+    }
 
-  if (!checkAuth(request, env.CRON_SECRET ?? '')) return unauthorized();
+    // Step 2: Try to get Cloudflare context
+    let cfEnv: any;
+    try {
+      const { getCloudflareContext } = await import('@cloudflare/next-on-pages');
+      const cf = getCloudflareContext();
+      cfEnv = cf.env;
+    } catch (e) {
+      return NextResponse.json({
+        error: 'getCloudflareContext failed',
+        detail: String(e),
+        step: 'cloudflare_context',
+      }, { status: 500 });
+    }
 
-  if (!env.KENPOM_EMAIL || !env.KENPOM_PASSWORD) {
-    return NextResponse.json(
-      { error: 'KENPOM_EMAIL or KENPOM_PASSWORD not configured' },
-      { status: 500 }
-    );
+    // Step 3: Check what bindings/secrets are available (don't log values)
+    const available = {
+      DB:               !!cfEnv?.DB,
+      CRON_SECRET:      !!cfEnv?.CRON_SECRET,
+      KENPOM_EMAIL:     !!cfEnv?.KENPOM_EMAIL,
+      KENPOM_PASSWORD:  !!cfEnv?.KENPOM_PASSWORD,
+    };
+
+    // Step 4: Auth check
+    const token = auth.replace('Bearer ', '').trim();
+    if (!cfEnv?.CRON_SECRET || token !== cfEnv.CRON_SECRET) {
+      return NextResponse.json({
+        error: 'Unauthorized',
+        bindings_available: available,
+      }, { status: 401 });
+    }
+
+    // Step 5: Try importing the sync module
+    let syncKenPomData: any;
+    try {
+      const mod = await import('@/lib/kenpom-sync');
+      syncKenPomData = mod.syncKenPomData;
+    } catch (e) {
+      return NextResponse.json({
+        error: 'Failed to import kenpom-sync',
+        detail: String(e),
+        step: 'module_import',
+        bindings_available: available,
+      }, { status: 500 });
+    }
+
+    // Step 6: Run the sync
+    try {
+      const result = await syncKenPomData(
+        cfEnv.DB,
+        cfEnv.KENPOM_EMAIL,
+        cfEnv.KENPOM_PASSWORD
+      );
+      return NextResponse.json({ ...result, bindings_available: available });
+    } catch (e) {
+      return NextResponse.json({
+        error: 'syncKenPomData threw an error',
+        detail: String(e),
+        step: 'sync_execution',
+        bindings_available: available,
+      }, { status: 500 });
+    }
+
+  } catch (err) {
+    return NextResponse.json({
+      error: 'Unhandled exception',
+      detail: String(err),
+      step: 'outer_catch',
+    }, { status: 500 });
   }
-
-  const result = await syncKenPomData(env.DB, env.KENPOM_EMAIL, env.KENPOM_PASSWORD);
-
-  return NextResponse.json(result, { status: result.success ? 200 : 500 });
 }
 
 export async function GET(request: NextRequest) {
-  const { env } = getCloudflareContext();
-
-  if (!checkAuth(request, env.CRON_SECRET ?? '')) return unauthorized();
-
-  const lastSync  = await getLastSyncTime(env.DB);
-  const teamCount = await env.DB.prepare(
-    'SELECT COUNT(*) as cnt FROM kenpom_data'
-  ).first<{ cnt: number }>();
-
-  const recentLogs = await env.DB.prepare(`
-    SELECT ran_at, teams_synced, status, error_message, duration_ms
-    FROM   kenpom_sync_log
-    ORDER  BY ran_at DESC
-    LIMIT  5
-  `).all();
-
   return NextResponse.json({
-    lastSync:   lastSync?.toISOString() ?? null,
-    teamCount:  teamCount?.cnt ?? 0,
-    staleness:  lastSync
-      ? `${Math.round((Date.now() - lastSync.getTime()) / (1000 * 60 * 60))}h ago`
-      : 'never synced',
-    recentRuns: recentLogs.results,
+    message: 'cron-kenpom diagnostic endpoint is live',
+    method: 'POST to trigger sync',
   });
 }
