@@ -79,12 +79,22 @@ export default function Portfolio() {
 
   const loadBets = async () => {
     setLoading(true);
-    const url = filter === 'all' ? '/api/bets' : `/api/bets?status=${filter}`;
-    const response = await fetch(url, { credentials: 'include' });
-    const data = await response.json();
-    if (data.success) {
-      setBets(data.bets);
+
+    // Load bets from localStorage
+    const storedBets = localStorage.getItem('bets');
+    if (storedBets) {
+      let allBets = JSON.parse(storedBets);
+
+      // Filter by status if needed
+      if (filter !== 'all') {
+        allBets = allBets.filter((b: any) => b.status === filter);
+      }
+
+      setBets(allBets);
+    } else {
+      setBets([]);
     }
+
     setLoading(false);
   };
 
@@ -142,23 +152,31 @@ export default function Portfolio() {
 
     setUpdating(true);
     try {
-      const response = await fetch(`/api/bets/${cashoutBetId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: cashoutStatus, actual_return: amount }),
-      });
+      // Update in localStorage
+      const storedBets = localStorage.getItem('bets');
+      if (storedBets) {
+        const allBets = JSON.parse(storedBets);
+        const betIndex = allBets.findIndex((b: any) => b.id === cashoutBetId);
 
-      if (response.ok) {
-        await loadBets();
-        setSelectedBet(null);
-        setShowCashoutModal(false);
-        setCashoutBetId(null);
-        toast.success(`Bet marked as ${cashoutStatus}`);
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Failed to update bet');
+        if (betIndex !== -1) {
+          allBets[betIndex].status = cashoutStatus;
+          allBets[betIndex].actual_return = amount;
+          allBets[betIndex].settled_at = Date.now();
+
+          // Update all legs to match bet status
+          allBets[betIndex].legs.forEach((leg: any) => {
+            leg.status = cashoutStatus;
+          });
+
+          localStorage.setItem('bets', JSON.stringify(allBets));
+        }
       }
+
+      await loadBets();
+      setSelectedBet(null);
+      setShowCashoutModal(false);
+      setCashoutBetId(null);
+      toast.success(`Bet marked as ${cashoutStatus}`);
     } catch (err) {
       console.error('Failed to update bet:', err);
       toast.error('Failed to update bet');
@@ -346,38 +364,40 @@ export default function Portfolio() {
 
     setSubmittingManualBet(true);
     try {
-      const response = await fetch('/api/bets/manual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          bet_type: betType,
-          legs: legs.map(leg => ({
-            sport: leg.sport,
-            event_date: leg.eventDate,
-            event_name: leg.eventName,
-            pick: leg.pick,
-            odds: parseFloat(leg.odds),
-          })),
-          stake: parseFloat(stake),
-          odds: americanOdds,
-          potential_return: potentialReturn,
-          sportsbook,
-          bet_link: betLink || null,
-          notes: notes || null,
-        }),
-      });
+      // Create bet object
+      const newBet = {
+        id: crypto.randomUUID(),
+        user_id: 'user-1',
+        created_at: Date.now(),
+        status: 'pending',
+        stake: parseFloat(stake),
+        odds: americanOdds,
+        potential_return: potentialReturn,
+        actual_return: 0,
+        sportsbook,
+        bet_link: betLink || null,
+        notes: notes || null,
+        legs: legs.map(leg => ({
+          id: crypto.randomUUID(),
+          sport: leg.sport,
+          event_name: leg.eventName,
+          commence_time: leg.eventDate ? new Date(leg.eventDate).getTime() : Date.now(),
+          pick: leg.pick,
+          odds: parseFloat(leg.odds),
+          status: 'pending',
+        })),
+      };
 
-      const data = await response.json();
+      // Save to localStorage
+      const storedBets = localStorage.getItem('bets');
+      const allBets = storedBets ? JSON.parse(storedBets) : [];
+      allBets.unshift(newBet); // Add to beginning
+      localStorage.setItem('bets', JSON.stringify(allBets));
 
-      if (response.ok) {
-        toast.success(`${betType === 'single' ? 'Bet' : 'Parlay'} added successfully!`);
-        await loadBets();
-        setShowManualBetModal(false);
-        resetManualBetForm();
-      } else {
-        toast.error(data.error || 'Failed to add bet');
-      }
+      toast.success(`${betType === 'single' ? 'Bet' : 'Parlay'} added successfully!`);
+      await loadBets();
+      setShowManualBetModal(false);
+      resetManualBetForm();
     } catch (err) {
       console.error('Failed to submit manual bet:', err);
       toast.error('Failed to add bet');

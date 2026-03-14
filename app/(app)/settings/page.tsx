@@ -15,45 +15,36 @@ export default function SettingsPage() {
   const [defaultUnitSize, setDefaultUnitSize] = useState(10);
 
   useEffect(() => {
-    fetch('/api/users/me')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setUser(data.user);
-          setBankroll(data.user.bankroll || 1000);
-          setKellyMultiplier(data.user.kelly_multiplier || 0.25);
-          setDefaultUnitSize(data.user.default_unit_size || 10);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load settings:', error);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      const userData = JSON.parse(storedUser);
+      setUser(userData);
+      setBankroll(userData.preferences?.bankroll || 1000);
+      setKellyMultiplier(userData.preferences?.kelly_multiplier || 0.25);
+      setDefaultUnitSize(userData.preferences?.default_unit_size || 10);
+    }
+    setLoading(false);
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/users/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Update user object with new preferences
+      const updatedUser = {
+        ...user,
+        preferences: {
+          ...user.preferences,
           bankroll,
           kelly_multiplier: kellyMultiplier,
           default_unit_size: defaultUnitSize,
-        }),
-      });
+        },
+      };
 
-      const data = await response.json();
+      // Save to localStorage
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
 
-      if (data.success) {
-        toast.success('Settings saved successfully!');
-        setUser({ ...user, bankroll, kelly_multiplier: kellyMultiplier, default_unit_size: defaultUnitSize });
-      } else {
-        toast.error(data.error || 'Failed to save settings');
-      }
+      toast.success('Settings saved successfully!');
     } catch (error) {
       toast.error('Failed to save settings');
     } finally {

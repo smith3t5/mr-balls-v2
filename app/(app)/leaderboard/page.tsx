@@ -17,19 +17,69 @@ export default function Leaderboard() {
 
   const loadLeaderboard = async () => {
     setLoading(true);
-    const response = await fetch(`/api/leaderboard?period=${period}`);
-    const data = await response.json();
-    if (data.success) {
-      setLeaderboard(data.leaderboard);
+
+    // Load user from localStorage
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+
+      // Calculate stats from bets
+      const storedBets = localStorage.getItem('bets');
+      const bets = storedBets ? JSON.parse(storedBets) : [];
+
+      const wins = bets.filter((b: any) => b.status === 'won').length;
+      const losses = bets.filter((b: any) => b.status === 'lost').length;
+      const pushes = bets.filter((b: any) => b.status === 'push').length;
+      const totalBets = bets.length;
+
+      const totalWagered = bets.reduce((sum: number, b: any) => sum + (b.stake || 0), 0);
+      const totalReturn = bets
+        .filter((b: any) => b.status !== 'pending')
+        .reduce((sum: number, b: any) => sum + (b.actual_return || 0), 0);
+      const unitsProfit = totalReturn - totalWagered;
+      const roi = totalWagered > 0 ? ((totalReturn - totalWagered) / totalWagered) * 100 : 0;
+
+      // Calculate current streak
+      let currentStreak = 0;
+      const sortedBets = [...bets]
+        .filter((b: any) => b.status !== 'pending')
+        .sort((a: any, b: any) => b.settled_at - a.settled_at);
+
+      for (const bet of sortedBets) {
+        if (bet.status === 'won') {
+          currentStreak++;
+        } else if (bet.status === 'lost') {
+          currentStreak--;
+        } else {
+          break;
+        }
+        if (Math.sign(currentStreak) !== Math.sign(bet.status === 'won' ? 1 : -1)) {
+          break;
+        }
+      }
+
+      const leaderboardEntry = {
+        username: user.username,
+        wins,
+        losses,
+        total_bets: totalBets,
+        roi,
+        units_profit: unitsProfit,
+        sharp_score: user.stats?.sharp_score || 50.0,
+        current_streak: currentStreak,
+      };
+
+      // For single user app, leaderboard is just the current user
+      setLeaderboard([leaderboardEntry]);
     }
+
     setLoading(false);
   };
 
   const loadCurrentUser = async () => {
-    const response = await fetch('/api/users/me');
-    const data = await response.json();
-    if (data.success) {
-      setCurrentUser(data.user);
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setCurrentUser(JSON.parse(storedUser));
     }
   };
 

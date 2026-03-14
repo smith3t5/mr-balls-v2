@@ -40,8 +40,31 @@ export default function Home() {
     try {
       // Simple hardcoded auth check
       if (username === HARDCODED_USER.username && password === HARDCODED_USER.password) {
+        // Call backend to create session
+        const response = await fetch('/api/auth/nfc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nfc_tag_id: 'fortheboys2025', // Using the NFC tag secret as ID
+            username: HARDCODED_USER.username,
+            state_code: null,
+          }),
+          credentials: 'include', // Important: ensures cookies are sent/received
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Authentication failed');
+        }
+
+        const data = await response.json();
+
         // Store user in localStorage
-        localStorage.setItem('user', JSON.stringify(HARDCODED_USER));
+        localStorage.setItem('user', JSON.stringify({
+          ...HARDCODED_USER,
+          id: data.user.id, // Use the actual user ID from backend
+        }));
+
         // Redirect to dashboard
         router.push('/dashboard');
       } else {

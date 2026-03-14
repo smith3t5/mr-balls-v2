@@ -244,40 +244,57 @@ export default function Generator() {
     if (!parlay) return;
 
     try {
-      const response = await fetch('/api/bets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          legs: parlay.parlay.map((leg: any) => ({
-            sport: leg.sport,
-            event_id: leg.event_id,
-            event_name: leg.event_name,
-            commence_time: leg.commence_time,
-            market: leg.market,
-            pick: leg.pick,
-            odds: leg.odds,
-            participant: leg.participant,
-            point: leg.point,
-            bet_kind: leg.bet_kind,
-            bet_tag: leg.bet_tag,
-            dk_link: leg.dk_link,
-            confidence: leg.confidence,
-            edge: leg.edge,
-            factors: leg.factors,
-            locked_by_user: leg.locked_by_user || false,
-          })),
-          stake,
-          notes: `Generated with ${parlay.meta.total_confidence.toFixed(1)}/10 confidence`,
-        }),
-      });
+      // Calculate potential return
+      const parlayOdds = parlay.meta.parlay_odds;
+      const potentialReturn = stake + (parlayOdds > 0
+        ? stake * (parlayOdds / 100)
+        : stake * (100 / Math.abs(parlayOdds)));
 
-      if (response.ok) {
-        toast.success('Parlay saved to portfolio!');
-        router.push('/portfolio');
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Failed to save bet');
-      }
+      // Create new bet object
+      const newBet = {
+        id: crypto.randomUUID(),
+        user_id: 'user-1',
+        created_at: Date.now(),
+        status: 'pending',
+        stake: stake,
+        odds: parlayOdds,
+        potential_return: potentialReturn,
+        notes: `Generated with ${parlay.meta.total_confidence.toFixed(1)}/10 confidence`,
+        legs: parlay.parlay.map((leg: any) => ({
+          id: crypto.randomUUID(),
+          sport: leg.sport,
+          event_id: leg.event_id,
+          event_name: leg.event_name,
+          commence_time: leg.commence_time,
+          market: leg.market,
+          pick: leg.pick,
+          odds: leg.odds,
+          status: 'pending',
+          participant: leg.participant,
+          point: leg.point,
+          bet_kind: leg.bet_kind,
+          bet_tag: leg.bet_tag,
+          dk_link: leg.dk_link,
+          confidence: leg.confidence,
+          edge: leg.edge,
+          expected_value: leg.expected_value,
+          kelly_units: leg.kelly_units,
+          bet_grade: leg.bet_grade,
+          true_probability: leg.true_probability,
+          implied_probability: leg.implied_probability,
+          factors: leg.factors,
+          locked_by_user: leg.locked_by_user || false,
+        })),
+      };
+
+      // Save to localStorage
+      const storedBets = localStorage.getItem('bets');
+      const allBets = storedBets ? JSON.parse(storedBets) : [];
+      allBets.unshift(newBet);
+      localStorage.setItem('bets', JSON.stringify(allBets));
+
+      toast.success('Parlay saved to portfolio!');
+      router.push('/portfolio');
     } catch (err: any) {
       toast.error(err.message);
     }

@@ -21,11 +21,17 @@ export default function HistoryPage() {
 
   const loadBets = async () => {
     try {
-      const response = await fetch('/api/bets?limit=50');
-      const data = await response.json();
-
-      if (data.success) {
-        setBets(data.bets);
+      const storedBets = localStorage.getItem('bets');
+      if (storedBets) {
+        const allBets = JSON.parse(storedBets);
+        // Convert to the format expected by the component
+        const formattedBets = allBets.slice(0, 50).map((bet: any) => ({
+          bet: bet,
+          legs: bet.legs || []
+        }));
+        setBets(formattedBets);
+      } else {
+        setBets([]);
       }
     } catch (error) {
       toast.error('Failed to load bet history');
@@ -37,19 +43,40 @@ export default function HistoryPage() {
   const markOutcome = async (betId: string, status: 'won' | 'lost' | 'push') => {
     setUpdating(betId);
     try {
-      const response = await fetch(`/api/bets/${betId}/outcome`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
+      const storedBets = localStorage.getItem('bets');
+      if (storedBets) {
+        const allBets = JSON.parse(storedBets);
+        const betIndex = allBets.findIndex((b: any) => b.id === betId);
 
-      const data = await response.json();
+        if (betIndex !== -1) {
+          const bet = allBets[betIndex];
 
-      if (data.success) {
-        toast.success(`Bet marked as ${status}!`);
-        loadBets(); // Reload bets
-      } else {
-        toast.error(data.error || 'Failed to update bet');
+          // Calculate actual return based on status
+          let actualReturn = 0;
+          if (status === 'won') {
+            actualReturn = bet.potential_return;
+          } else if (status === 'push') {
+            actualReturn = bet.stake;
+          } else {
+            actualReturn = 0;
+          }
+
+          // Update bet
+          allBets[betIndex].status = status;
+          allBets[betIndex].actual_return = actualReturn;
+          allBets[betIndex].settled_at = Date.now();
+
+          // Update all legs
+          allBets[betIndex].legs.forEach((leg: any) => {
+            leg.status = status;
+          });
+
+          localStorage.setItem('bets', JSON.stringify(allBets));
+          toast.success(`Bet marked as ${status}!`);
+          loadBets(); // Reload bets
+        } else {
+          toast.error('Bet not found');
+        }
       }
     } catch (error) {
       toast.error('Failed to update bet outcome');
