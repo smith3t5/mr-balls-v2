@@ -1,62 +1,28 @@
 /**
  * lib/kenpom-sync.ts
  *
- * Authenticates with kenpom.com using your subscriber credentials,
- * scrapes the main ratings table (index.php — all D1 teams), and
- * upserts the results into the D1 kenpom_data table.
+ * Syncs KenPom efficiency data into D1 using the official KenPom API.
+ * API docs: https://kenpom.com/api-documentation.php
  *
- * Called by: functions/cron-kenpom.ts (daily cron)
- * Read by:   lib/analytics-engine.ts (per-request, via D1 cache)
- *
- * KenPom page structure (as of 2025):
- *   POST https://kenpom.com/handlers/login_handler.php
- *     email=...&password=...
- *   GET  https://kenpom.com/index.php
- *     Returns HTML with <table id="ratings-table"> containing all D1 teams.
- *
- * Column order in the ratings table (confirmed from BeautifulSoup scrapers):
- *   0  Rank
- *   1  Team (contains <a> and sometimes a seed number suffix)
- *   2  Conference
- *   3  W-L  (e.g. "24-8")
- *   4  AdjEM
- *   5  AdjO   ← we want this
- *   6  AdjO Rank
- *   7  AdjD   ← we want this
- *   8  AdjD Rank
- *   9  AdjT   ← we want this
- *   10 AdjT Rank
- *   11 Luck
- *   12 Luck Rank
- *   13 SOS AdjEM
- *   14 SOS AdjEM Rank
- *   15 OppO   ← opponent AdjO
- *   16 OppO Rank
- *   17 OppD   ← opponent AdjD
- *   18 OppD Rank
- *   19 NCSOS (non-conf SOS)
- *   20 NCSOS Rank
- *
- * KenPom occasionally reorders or adds columns. The parser below uses
- * header detection to find column indices dynamically rather than
- * relying on hardcoded positions — this makes it resilient to minor
- * layout changes.
+ * Called by: app/api/cron-kenpom/route.ts (daily cron)
+ * Read by:   lib/analytics-engine.ts (per-request via D1)
  */
 
-export interface KenPomRow {
-  teamName:   string;
-  conference: string;
-  record:     string;
-  rank:       number;
-  adjEM:      number;
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface KenPomEntry {
   adjOE:      number;
   adjDE:      number;
   adjTempo:   number;
+  adjEM:      number;
+  winPct:     number;
+  conference: string;
+  rank:       number;
   luck:       number | null;
   oppAdjOE:   number | null;
   oppAdjDE:   number | null;
-  winPct:     number;
-  season:     string;
 }
 
 export interface KenPomSyncResult {
@@ -66,386 +32,86 @@ export interface KenPomSyncResult {
   error?:      string;
 }
 
-// ---------------------------------------------------------------------------
-// HTML parsing helpers (no external dependencies — runs in Cloudflare Workers)
-// ---------------------------------------------------------------------------
-
-/**
- * Extract all <td> text values from a single <tr> string.
- * Strips HTML tags and trims whitespace.
- */
-function parseTdValues(row: string): string[] {
-  const cells: string[] = [];
-  // Match each <td ...>...</td> block (non-greedy, handles nested tags)
-  const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = tdRegex.exec(row)) !== null) {
-    // Strip all HTML tags from the cell content
-    const text = match[1].replace(/<[^>]+>/g, '').trim();
-    cells.push(text);
-  }
-  return cells;
-}
-
-/**
- * Extract all <th> text values from the header row.
- * Used to dynamically detect column positions.
- */
-function parseThValues(row: string): string[] {
-  const headers: string[] = [];
-  const thRegex = /<th[^>]*>([\s\S]*?)<\/th>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = thRegex.exec(row)) !== null) {
-    headers.push(match[1].replace(/<[^>]+>/g, '').trim().toLowerCase());
-  }
-  return headers;
-}
-
-/**
- * Parse "W-L" record string into a win percentage.
- * Returns 0 if unparseable.
- */
-function recordToWinPct(record: string): number {
-  const parts = record.split('-');
-  if (parts.length !== 2) return 0;
-  const wins   = parseInt(parts[0], 10);
-  const losses = parseInt(parts[1], 10);
-  if (isNaN(wins) || isNaN(losses) || wins + losses === 0) return 0;
-  return wins / (wins + losses);
-}
-
-/**
- * Strip the tournament seed suffix KenPom appends to team names.
- * e.g. "Duke 1" → "Duke", "Kansas State 4" → "Kansas State"
- */
-function cleanTeamName(raw: string): string {
-  // KenPom appends a space + single/double digit seed at end of name
-  return raw.replace(/\s+\d{1,2}$/, '').trim();
-}
-
-/**
- * Safely parse a float, returning null on failure.
- */
-function safeFloat(val: string): number | null {
-  const n = parseFloat(val);
-  return isNaN(n) ? null : n;
+// Shape of a single record from GET /api.php?endpoint=ratings&y=YYYY
+interface KenPomRatingsRecord {
+  TeamName:     string;
+  ConfShort:    string;
+  Wins:         number;
+  Losses:       number;
+  AdjEM:        number;
+  RankAdjEM:    number;
+  AdjOE:        number;
+  AdjDE:        number;
+  AdjTempo:     number;
+  Luck:         number;
+  SOSO:         number | null; // opponent offensive SOS (proxy for OppAdjOE)
+  SOSD:         number | null; // opponent defensive SOS (proxy for OppAdjDE)
+  Season:       number;
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
-// Column index detection
+// API client
 // ---------------------------------------------------------------------------
 
-interface ColMap {
-  rank:    number;
-  team:    number;
-  conf:    number;
-  record:  number;
-  adjEM:   number;
-  adjO:    number;
-  adjD:    number;
-  adjT:    number;
-  luck:    number;
-  oppO:    number;
-  oppD:    number;
-}
+const KENPOM_BASE = 'https://kenpom.com';
 
-/**
- * Detect column positions from the header row.
- * Falls back to known-good defaults if detection fails.
- */
-/**
- * Detect column positions from KenPom's thead2 row.
- *
- * Confirmed KenPom table structure (March 2025):
- * thead1: colspan grouping row (no useful labels)
- * thead2: actual column labels — Rk, Team, Conf, W-L, NetRtg,
- *         ORtg, [ORtg rank], DRtg, [DRtg rank], AdjT, [AdjT rank],
- *         Luck, [Luck rank], SOS NetRtg x2, OppO x2, OppD x2, NCSOS x2
- *
- * Each metric has value + rank as separate <td> cells in data rows,
- * matching the colspan=2 in the header. Hardcoded positions below
- * match this confirmed structure. We also try dynamic detection as
- * a fallback in case KenPom reorders columns.
- */
-function detectColumns(rows: string[]): ColMap {
-  // Find thead2 — the second header row which has the actual column names
-  // KenPom uses class="thead2" on this row
-  const thead2 = rows.find(r => r.includes('thead2')) ?? '';
-  const headers = parseThValues(thead2).map(h => h.toLowerCase().trim());
+async function fetchRatings(
+  apiKey: string,
+  season: string
+): Promise<KenPomRatingsRecord[]> {
+  const url = `${KENPOM_BASE}/api.php?endpoint=ratings&y=${season}`;
 
-  // Dynamic detection using confirmed column name variants
-  const findFirst = (...names: string[]): number => {
-    for (const n of names) {
-      const idx = headers.findIndex(h => h === n || h.includes(n));
-      if (idx >= 0) return idx;
-    }
-    return -1;
-  };
-
-  // Try to detect dynamically first
-  const rankIdx   = findFirst('rk', 'rank');
-  const teamIdx   = findFirst('team');
-  const confIdx   = findFirst('conf');
-  const recordIdx = findFirst('w-l', 'wl', 'record');
-  const netRtgIdx = findFirst('netrtg', 'adjem', 'em');
-  const ortgIdx   = findFirst('ortg', 'adjo', 'oe');
-  const drtgIdx   = findFirst('drtg', 'adjd', 'de');
-  const tempoIdx  = findFirst('adjt', 'tempo');
-  const luckIdx   = findFirst('luck');
-
-  // SOS / opponent columns come after luck — find relative to luckIdx
-  const afterLuck = (name: string) => {
-    if (luckIdx < 0) return -1;
-    return headers.findIndex((h, i) => i > luckIdx + 2 && h.includes(name));
-  };
-  const oppOIdx = afterLuck('oppo') >= 0 ? afterLuck('oppo') : afterLuck('oe');
-  const oppDIdx = afterLuck('oppd') >= 0 ? afterLuck('oppd') : afterLuck('de');
-
-  // Confirmed hardcoded fallback positions (verified March 2025)
-  // Col: 0=Rk 1=Team 2=Conf 3=W-L 4=NetRtg 5=ORtg 6=ORtgRk 7=DRtg 8=DRtgRk
-  //      9=AdjT 10=AdjTRk 11=Luck 12=LuckRk 13=SOSNetRtg 14=SOSRk
-  //      15=OppO 16=OppORk 17=OppD 18=OppDRk 19=NCSOS 20=NCSORk
-  return {
-    rank:   rankIdx   >= 0 ? rankIdx   : 0,
-    team:   teamIdx   >= 0 ? teamIdx   : 1,
-    conf:   confIdx   >= 0 ? confIdx   : 2,
-    record: recordIdx >= 0 ? recordIdx : 3,
-    adjEM:  netRtgIdx >= 0 ? netRtgIdx : 4,
-    adjO:   ortgIdx   >= 0 ? ortgIdx   : 5,
-    adjD:   drtgIdx   >= 0 ? drtgIdx   : 7,
-    adjT:   tempoIdx  >= 0 ? tempoIdx  : 9,
-    luck:   luckIdx   >= 0 ? luckIdx   : 11,
-    oppO:   oppOIdx   >= 0 ? oppOIdx   : 15,
-    oppD:   oppDIdx   >= 0 ? oppDIdx   : 17,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// HTML scraping
-// ---------------------------------------------------------------------------
-
-const KENPOM_BASE    = 'https://kenpom.com';
-const LOGIN_ENDPOINT = `${KENPOM_BASE}/handlers/login_handler.php`;
-const RATINGS_PAGE   = `${KENPOM_BASE}/index.php`;
-
-// Simulate a real browser to avoid bot detection
-const BROWSER_HEADERS = {
-  'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.5',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'DNT':             '1',
-  'Connection':      'keep-alive',
-  'Upgrade-Insecure-Requests': '1',
-};
-
-/**
- * Authenticate with KenPom and return a session cookie string.
- * KenPom uses a simple form POST that sets a PHP session cookie.
- */
-async function loginToKenPom(email: string, password: string): Promise<string> {
-  const body = new URLSearchParams({ email, password });
-
-  const response = await fetch(LOGIN_ENDPOINT, {
-    method:   'POST',
-    headers:  {
-      ...BROWSER_HEADERS,
-      'Content-Type':  'application/x-www-form-urlencoded',
-      'Referer':       `${KENPOM_BASE}/`,
-      'Origin':        KENPOM_BASE,
-    },
-    body:     body.toString(),
-    redirect: 'manual', // Don't follow redirects — we want the Set-Cookie header
-  });
-
-  // KenPom returns a 302 redirect on successful login
-  // The session cookie is in the Set-Cookie header
-  const setCookie = response.headers.get('set-cookie');
-  if (!setCookie) {
-    // Try following the redirect and checking for auth cookie
-    const responseFollowed = await fetch(LOGIN_ENDPOINT, {
-      method:  'POST',
-      headers: {
-        ...BROWSER_HEADERS,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Referer':      `${KENPOM_BASE}/`,
-        'Origin':       KENPOM_BASE,
-      },
-      body: body.toString(),
-    });
-
-    const followedCookie = responseFollowed.headers.get('set-cookie');
-    if (!followedCookie) {
-      throw new Error('KenPom login failed: no session cookie returned. Check credentials.');
-    }
-    return parseCookieHeader(followedCookie);
-  }
-
-  const cookieStr = parseCookieHeader(setCookie);
-  if (!cookieStr) {
-    throw new Error('KenPom login failed: could not parse session cookie.');
-  }
-
-  return cookieStr;
-}
-
-/**
- * Extract the cookie name=value pairs we need to send in subsequent requests.
- * Strips attributes like Path, Expires, HttpOnly, etc.
- */
-function parseCookieHeader(setCookieHeader: string): string {
-  // Set-Cookie can contain multiple cookies separated by commas,
-  // but each cookie's attributes are separated by semicolons.
-  // We want the first "name=value" part of each cookie.
-  return setCookieHeader
-    .split(',')
-    .map((c) => c.split(';')[0].trim())
-    .filter((c) => c.includes('='))
-    .join('; ');
-}
-
-/**
- * Fetch the KenPom ratings page using the authenticated session cookie.
- */
-async function fetchRatingsPage(sessionCookie: string): Promise<string> {
-  const response = await fetch(RATINGS_PAGE, {
+  const response = await fetch(url, {
     headers: {
-      ...BROWSER_HEADERS,
-      'Cookie':  sessionCookie,
-      'Referer': KENPOM_BASE,
+      'Authorization': `Bearer ${apiKey}`,
+      'Accept':        'application/json',
     },
   });
 
   if (!response.ok) {
-    throw new Error(`KenPom ratings page returned HTTP ${response.status}`);
+    const body = await response.text().catch(() => '');
+    throw new Error(
+      `KenPom API returned HTTP ${response.status}: ${body.slice(0, 200)}`
+    );
   }
 
-  const html = await response.text();
+  const data = await response.json() as { teams?: KenPomRatingsRecord[] } | KenPomRatingsRecord[];
 
-  // Sanity check: if we got the login form back, auth failed silently
-  if (html.includes('id="login"') || html.includes('name="password"')) {
-    throw new Error('KenPom auth failed: got login page instead of ratings. Check credentials.');
+  // API may return { teams: [...] } or directly an array
+  const records = Array.isArray(data) ? data : (data as any).teams ?? [];
+
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error(
+      `KenPom API returned no records. Response: ${JSON.stringify(data).slice(0, 300)}`
+    );
   }
 
-  if (!html.includes('ratings-table') && !html.includes('id="dataTable"')) {
-    throw new Error('KenPom ratings table not found on page. Page structure may have changed.');
-  }
-
-  return html;
-}
-
-/**
- * Parse the HTML ratings table into an array of KenPomRow objects.
- */
-function parseRatingsTable(html: string, season: string): KenPomRow[] {
-  // Extract the table content
-  // KenPom uses id="ratings-table" or the main dataTable
-  const tableMatch = html.match(/<table[^>]*id=["'](ratings-table|dataTable)["'][^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) {
-    // Fallback: grab the first substantial table
-    const fallback = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-    if (!fallback) throw new Error('Could not find ratings table in KenPom HTML');
-  }
-
-  const tableHtml = tableMatch ? tableMatch[0] : html;
-
-  // Split into rows
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  const rows: string[] = [];
-  let rowMatch: RegExpExecArray | null;
-  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-    rows.push(rowMatch[0]);
-  }
-
-  if (rows.length < 3) {
-    throw new Error(`KenPom table has only ${rows.length} rows — expected 360+`);
-  }
-
-  // Pass all rows to detectColumns so it can find thead2 specifically
-  const colMap = detectColumns(rows);
-  // Data rows start after the last header row (thead1 + thead2 = 2 rows)
-  const lastHeaderIdx = rows.reduce((last, r, i) =>
-    (r.includes('thead1') || r.includes('thead2') || r.includes('<th')) ? i : last, 1);
-
-  const teams: KenPomRow[] = [];
-
-  for (let i = lastHeaderIdx + 1; i < rows.length; i++) {
-    const row = rows[i];
-
-    // Skip header/subheader rows that don't contain actual team data
-    if (!row.includes('<td')) continue;
-    if (row.includes('thead1') || row.includes('thead2') || row.includes('<th')) continue;
-
-    const cells = parseTdValues(row);
-    if (cells.length < 10) continue; // not a data row
-
-    // Team name cell — KenPom wraps it in an <a> tag; parseTdValues strips tags
-    const rawTeamName = cells[colMap.team] ?? '';
-    const teamName    = cleanTeamName(rawTeamName);
-    if (!teamName || teamName.toLowerCase() === 'team') continue;
-
-    const rankStr   = cells[colMap.rank]   ?? '0';
-    const confStr   = cells[colMap.conf]   ?? '';
-    const recordStr = cells[colMap.record] ?? '0-0';
-    const adjEMStr  = cells[colMap.adjEM]  ?? '0';
-    const adjOStr   = cells[colMap.adjO]   ?? '100';
-    const adjDStr   = cells[colMap.adjD]   ?? '100';
-    const adjTStr   = cells[colMap.adjT]   ?? '68';
-    const luckStr   = cells[colMap.luck]   ?? '0';
-    const oppOStr   = cells[colMap.oppO]   ?? null;
-    const oppDStr   = cells[colMap.oppD]   ?? null;
-
-    const adjOE = safeFloat(adjOStr);
-    const adjDE = safeFloat(adjDStr);
-    const adjT  = safeFloat(adjTStr);
-
-    // Skip rows with unparseable core metrics
-    if (adjOE === null || adjDE === null || adjT === null) continue;
-
-    teams.push({
-      teamName,
-      conference: confStr,
-      record:     recordStr,
-      rank:       parseInt(rankStr, 10) || teams.length + 1,
-      adjEM:      safeFloat(adjEMStr) ?? (adjOE - adjDE),
-      adjOE,
-      adjDE,
-      adjTempo:   adjT,
-      luck:       safeFloat(luckStr),
-      oppAdjOE:   oppOStr ? safeFloat(oppOStr) : null,
-      oppAdjDE:   oppDStr ? safeFloat(oppDStr) : null,
-      winPct:     recordToWinPct(recordStr),
-      season,
-    });
-  }
-
-  return teams;
+  return records;
 }
 
 // ---------------------------------------------------------------------------
 // D1 upsert
 // ---------------------------------------------------------------------------
 
-/**
- * Upsert all KenPom rows into the kenpom_data D1 table.
- * Uses batched statements to stay within D1's per-request limits.
- * Returns the number of rows successfully written.
- */
 async function upsertToD1(
   db: D1Database,
-  teams: KenPomRow[]
+  records: KenPomRatingsRecord[],
+  season: string
 ): Promise<number> {
-  const now = Math.floor(Date.now() / 1000);
-
-  // D1 batch limit is 100 statements per batch call
+  const now        = Math.floor(Date.now() / 1000);
   const BATCH_SIZE = 100;
-  let upserted = 0;
+  let upserted     = 0;
 
-  for (let i = 0; i < teams.length; i += BATCH_SIZE) {
-    const chunk = teams.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const chunk = records.slice(i, i + BATCH_SIZE);
 
-    const statements = chunk.map((t) =>
-      db.prepare(`
+    const statements = chunk.map((r) => {
+      const wins   = Number(r.Wins)   || 0;
+      const losses = Number(r.Losses) || 0;
+      const winPct = wins + losses > 0 ? wins / (wins + losses) : 0;
+
+      return db.prepare(`
         INSERT INTO kenpom_data (
           team_name, adj_oe, adj_de, adj_tempo, adj_em,
           conference, kenpom_rank, win_pct, record,
@@ -467,22 +133,22 @@ async function upsertToD1(
           season       = excluded.season,
           last_updated = excluded.last_updated
       `).bind(
-        t.teamName,
-        t.adjOE,
-        t.adjDE,
-        t.adjTempo,
-        t.adjEM,
-        t.conference,
-        t.rank,
-        t.winPct,
-        t.record,
-        t.luck,
-        t.oppAdjOE,
-        t.oppAdjDE,
-        t.season,
+        r.TeamName,
+        Number(r.AdjOE),
+        Number(r.AdjDE),
+        Number(r.AdjTempo),
+        Number(r.AdjEM),
+        r.ConfShort ?? '',
+        Number(r.RankAdjEM) || 0,
+        winPct,
+        `${wins}-${losses}`,
+        r.Luck != null ? Number(r.Luck) : null,
+        r.SOSO != null ? Number(r.SOSO) : null,
+        r.SOSD != null ? Number(r.SOSD) : null,
+        season,
         now
-      )
-    );
+      );
+    });
 
     await db.batch(statements);
     upserted += chunk.length;
@@ -491,23 +157,29 @@ async function upsertToD1(
   return upserted;
 }
 
-/**
- * Write a record to kenpom_sync_log so we can monitor cron health.
- */
 async function logSyncRun(
   db: D1Database,
-  result: { teamsSynced: number; status: 'success' | 'partial' | 'failed'; error?: string; durationMs: number }
+  result: {
+    teamsSynced: number;
+    status:      'success' | 'partial' | 'failed';
+    error?:      string;
+    durationMs:  number;
+  }
 ): Promise<void> {
-  await db.prepare(`
-    INSERT INTO kenpom_sync_log (ran_at, teams_synced, status, error_message, duration_ms)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(
-    Math.floor(Date.now() / 1000),
-    result.teamsSynced,
-    result.status,
-    result.error ?? null,
-    result.durationMs
-  ).run();
+  try {
+    await db.prepare(`
+      INSERT INTO kenpom_sync_log (ran_at, teams_synced, status, error_message, duration_ms)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      Math.floor(Date.now() / 1000),
+      result.teamsSynced,
+      result.status,
+      result.error ?? null,
+      result.durationMs
+    ).run();
+  } catch (_) {
+    // Don't let logging failure mask the real result
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,53 +187,26 @@ async function logSyncRun(
 // ---------------------------------------------------------------------------
 
 /**
- * Full sync: authenticate → scrape → parse → upsert → log.
- * Call this from your cron function.
+ * Fetch all D1 team ratings from the KenPom API and upsert into D1.
  *
- * @param db         Cloudflare D1 database binding
- * @param email      KenPom subscriber email (from env)
- * @param password   KenPom subscriber password (from env)
- * @param season     Season string e.g. "2025" (defaults to current year)
+ * @param db      Cloudflare D1 binding
+ * @param apiKey  KenPom API key (from env.KENPOM_API_KEY)
+ * @param season  e.g. "2025" — the ending year of the season
  */
 export async function syncKenPomData(
   db: D1Database,
-  email: string,
-  password: string,
+  apiKey: string,
   season?: string
 ): Promise<KenPomSyncResult> {
-  const start      = Date.now();
-  const seasonStr  = season ?? new Date().getFullYear().toString();
+  const start     = Date.now();
+  const seasonStr = season ?? new Date().getFullYear().toString();
 
   try {
-    // 1. Authenticate
-    const sessionCookie = await loginToKenPom(email, password);
-
-    // Small delay after login to avoid looking like a bot
-    await new Promise((r) => setTimeout(r, 800));
-
-    // 2. Fetch ratings page
-    const html = await fetchRatingsPage(sessionCookie);
-
-    // 3. Parse
-    const teams = parseRatingsTable(html, seasonStr);
-
-    if (teams.length < 300) {
-      // KenPom has 362 D1 teams as of 2025. If we get far fewer, something went wrong.
-      throw new Error(`Only parsed ${teams.length} teams — expected 350+. Parser may need updating.`);
-    }
-
-    // 4. Upsert to D1
-    const upserted = await upsertToD1(db, teams);
-
+    const records  = await fetchRatings(apiKey, seasonStr);
+    const upserted = await upsertToD1(db, records, seasonStr);
     const durationMs = Date.now() - start;
 
-    // 5. Log
-    await logSyncRun(db, {
-      teamsSynced: upserted,
-      status:      'success',
-      durationMs,
-    });
-
+    await logSyncRun(db, { teamsSynced: upserted, status: 'success', durationMs });
     console.log(`[kenpom-sync] Success: ${upserted} teams synced in ${durationMs}ms`);
 
     return { success: true, teamsSynced: upserted, durationMs };
@@ -571,16 +216,7 @@ export async function syncKenPomData(
     const errorMsg   = err instanceof Error ? err.message : String(err);
 
     console.error('[kenpom-sync] Failed:', errorMsg);
-
-    // Best-effort log (don't throw if this fails too)
-    try {
-      await logSyncRun(db, {
-        teamsSynced: 0,
-        status:      'failed',
-        error:       errorMsg,
-        durationMs,
-      });
-    } catch (_) {}
+    await logSyncRun(db, { teamsSynced: 0, status: 'failed', error: errorMsg, durationMs });
 
     return { success: false, teamsSynced: 0, durationMs, error: errorMsg };
   }
@@ -590,23 +226,6 @@ export async function syncKenPomData(
 // Query helpers (used by analytics-engine.ts)
 // ---------------------------------------------------------------------------
 
-export interface KenPomEntry {
-  adjOE:      number;
-  adjDE:      number;
-  adjTempo:   number;
-  adjEM:      number;
-  winPct:     number;
-  conference: string;
-  rank:       number;
-  luck:       number | null;
-  oppAdjOE:   number | null;
-  oppAdjDE:   number | null;
-}
-
-/**
- * Fetch a single team's KenPom data from D1.
- * Returns null if the team isn't in the database yet.
- */
 export async function getTeamData(
   db: D1Database,
   teamName: string
@@ -639,10 +258,6 @@ export async function getTeamData(
   };
 }
 
-/**
- * Fetch both teams' data in a single round-trip.
- * More efficient than two separate getTeamData calls.
- */
 export async function getMatchupData(
   db: D1Database,
   homeTeam: string,
@@ -673,8 +288,8 @@ export async function getMatchupData(
     oppAdjDE:   r.opp_adj_de,
   });
 
-  const homeRow = rows.results.find((r) => r.team_name === homeTeam);
-  const awayRow = rows.results.find((r) => r.team_name === awayTeam);
+  const homeRow = rows.results.find(r => r.team_name === homeTeam);
+  const awayRow = rows.results.find(r => r.team_name === awayTeam);
 
   return {
     home: homeRow ? toEntry(homeRow) : null,
@@ -682,10 +297,6 @@ export async function getMatchupData(
   };
 }
 
-/**
- * Check when data was last successfully synced.
- * Returns null if no sync has ever run.
- */
 export async function getLastSyncTime(db: D1Database): Promise<Date | null> {
   const row = await db.prepare(`
     SELECT ran_at FROM kenpom_sync_log

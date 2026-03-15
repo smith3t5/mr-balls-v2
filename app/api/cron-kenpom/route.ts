@@ -1,6 +1,6 @@
 /**
  * app/api/cron-kenpom/route.ts
- * Compatible with @cloudflare/next-on-pages v1.13.16
+ * Uses official KenPom API (Bearer token auth)
  */
 
 import { getRequestContext } from '@cloudflare/next-on-pages';
@@ -22,24 +22,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!(env as any).KENPOM_EMAIL || !(env as any).KENPOM_PASSWORD) {
+  if (!(env as any).KENPOM_API_KEY) {
     return NextResponse.json(
-      { error: 'KENPOM_EMAIL or KENPOM_PASSWORD not configured' },
-      { status: 500 }
-    );
-  }
-
-  if (!(env as any).DB) {
-    return NextResponse.json(
-      { error: 'D1 binding DB not found' },
+      { error: 'KENPOM_API_KEY not configured in environment' },
       { status: 500 }
     );
   }
 
   const result = await syncKenPomData(
     (env as any).DB as D1Database,
-    (env as any).KENPOM_EMAIL as string,
-    (env as any).KENPOM_PASSWORD as string
+    (env as any).KENPOM_API_KEY as string
   );
 
   return NextResponse.json(result, { status: result.success ? 200 : 500 });
@@ -52,8 +44,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const db = (env as any).DB as D1Database;
-
+  const db        = (env as any).DB as D1Database;
   const lastSync  = await getLastSyncTime(db);
   const teamCount = await db.prepare(
     'SELECT COUNT(*) as cnt FROM kenpom_data'
