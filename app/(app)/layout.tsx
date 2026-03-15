@@ -15,7 +15,7 @@ import {
   Settings,
   History,
 } from 'lucide-react';
-import STierAlert from './components/STierAlert';
+import STierAlert from '@/app/(app)/components/STierAlert';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
