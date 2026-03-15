@@ -103,30 +103,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { env } = getRequestContext();
-    const db = new Database(env.DB as D1Database);
-
-    // Validate session
-    const session = await db.db
-      .prepare('SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?')
-      .bind(sessionId, Date.now())
-      .first();
-
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Invalid or expired session' },
-        { status: 401 }
-      );
-    }
-
-    // Get user settings
-    const user = await db.db
-      .prepare('SELECT state_code, kelly_multiplier, bankroll FROM users WHERE id = ?')
-      .bind(session.user_id)
-      .first();
-
-    const userStateCode   = (user?.state_code as string)  || undefined;
-    const kellyMultiplier = (user?.kelly_multiplier as number) || 0.25;
-    const bankroll        = (user?.bankroll as number)     || 1000;
+    const kellyMultiplier = 0.25;
+    const bankroll        = 1000;
+    const userStateCode   = undefined as string | undefined;
 
     // Parse and validate criteria
     const criteria: GeneratorCriteria = await request.json();
