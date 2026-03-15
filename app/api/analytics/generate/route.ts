@@ -114,8 +114,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize clients
-    // KEY FIX: pass env.DB as first arg so KenPom D1 queries work
+    const db = new Database(env.DB as D1Database);
     const oddsClient      = new OddsAPIClient((env as any).ODDS_API_KEY || '', db);
     const weatherClient   = new WeatherClient(db);
     const analyticsEngine = new AnalyticsEngine(env.DB as D1Database, kellyMultiplier, bankroll);
