@@ -153,42 +153,67 @@ interface ColMap {
  * Detect column positions from the header row.
  * Falls back to known-good defaults if detection fails.
  */
-function detectColumns(headerRow: string): ColMap {
-  const headers = parseThValues(headerRow);
+/**
+ * Detect column positions from KenPom's thead2 row.
+ *
+ * Confirmed KenPom table structure (March 2025):
+ * thead1: colspan grouping row (no useful labels)
+ * thead2: actual column labels — Rk, Team, Conf, W-L, NetRtg,
+ *         ORtg, [ORtg rank], DRtg, [DRtg rank], AdjT, [AdjT rank],
+ *         Luck, [Luck rank], SOS NetRtg x2, OppO x2, OppD x2, NCSOS x2
+ *
+ * Each metric has value + rank as separate <td> cells in data rows,
+ * matching the colspan=2 in the header. Hardcoded positions below
+ * match this confirmed structure. We also try dynamic detection as
+ * a fallback in case KenPom reorders columns.
+ */
+function detectColumns(rows: string[]): ColMap {
+  // Find thead2 — the second header row which has the actual column names
+  // KenPom uses class="thead2" on this row
+  const thead2 = rows.find(r => r.includes('thead2')) ?? '';
+  const headers = parseThValues(thead2).map(h => h.toLowerCase().trim());
 
-  const find = (...candidates: string[]): number => {
-    for (const c of candidates) {
-      const idx = headers.findIndex((h) => h.includes(c));
-      if (idx !== -1) return idx;
+  // Dynamic detection using confirmed column name variants
+  const findFirst = (...names: string[]): number => {
+    for (const n of names) {
+      const idx = headers.findIndex(h => h === n || h.includes(n));
+      if (idx >= 0) return idx;
     }
     return -1;
   };
 
-  // The ratings table has duplicate "rank" columns (rank suffix after each
-  // metric). We want the *first* occurrence of each metric column.
-  const adjOIdx  = headers.findIndex((h) => h === 'adjo' || h === 'adjoe' || h.startsWith('adjo'));
-  const adjDIdx  = headers.findIndex((h) => h === 'adjd' || h === 'adjde' || h.startsWith('adjd'));
-  const adjTIdx  = headers.findIndex((h) => h === 'adjt' || h === 'adjte' || h.startsWith('adjt'));
-  const adjEMIdx = headers.findIndex((h) => h === 'adjem' || h.includes('efficiency margin'));
-  const luckIdx  = headers.findIndex((h) => h === 'luck');
+  // Try to detect dynamically first
+  const rankIdx   = findFirst('rk', 'rank');
+  const teamIdx   = findFirst('team');
+  const confIdx   = findFirst('conf');
+  const recordIdx = findFirst('w-l', 'wl', 'record');
+  const netRtgIdx = findFirst('netrtg', 'adjem', 'em');
+  const ortgIdx   = findFirst('ortg', 'adjo', 'oe');
+  const drtgIdx   = findFirst('drtg', 'adjd', 'de');
+  const tempoIdx  = findFirst('adjt', 'tempo');
+  const luckIdx   = findFirst('luck');
 
-  // Opponent columns appear after the luck column — find them after luckIdx
-  const oppOIdx  = luckIdx >= 0
-    ? headers.findIndex((h, i) => i > luckIdx && (h === 'oppo' || h === 'oppoe' || h.startsWith('oppo')))
-    : -1;
-  const oppDIdx  = luckIdx >= 0
-    ? headers.findIndex((h, i) => i > luckIdx && (h === 'oppd' || h === 'oppde' || h.startsWith('oppd')))
-    : -1;
+  // SOS / opponent columns come after luck — find relative to luckIdx
+  const afterLuck = (name: string) => {
+    if (luckIdx < 0) return -1;
+    return headers.findIndex((h, i) => i > luckIdx + 2 && h.includes(name));
+  };
+  const oppOIdx = afterLuck('oppo') >= 0 ? afterLuck('oppo') : afterLuck('oe');
+  const oppDIdx = afterLuck('oppd') >= 0 ? afterLuck('oppd') : afterLuck('de');
 
+  // Confirmed hardcoded fallback positions (verified March 2025)
+  // Col: 0=Rk 1=Team 2=Conf 3=W-L 4=NetRtg 5=ORtg 6=ORtgRk 7=DRtg 8=DRtgRk
+  //      9=AdjT 10=AdjTRk 11=Luck 12=LuckRk 13=SOSNetRtg 14=SOSRk
+  //      15=OppO 16=OppORk 17=OppD 18=OppDRk 19=NCSOS 20=NCSORk
   return {
-    rank:   find('rank'),
-    team:   find('team'),
-    conf:   find('conf'),
-    record: find('w-l', 'record', 'wl'),
-    adjEM:  adjEMIdx  >= 0 ? adjEMIdx  : 4,
-    adjO:   adjOIdx   >= 0 ? adjOIdx   : 5,
-    adjD:   adjDIdx   >= 0 ? adjDIdx   : 7,
-    adjT:   adjTIdx   >= 0 ? adjTIdx   : 9,
+    rank:   rankIdx   >= 0 ? rankIdx   : 0,
+    team:   teamIdx   >= 0 ? teamIdx   : 1,
+    conf:   confIdx   >= 0 ? confIdx   : 2,
+    record: recordIdx >= 0 ? recordIdx : 3,
+    adjEM:  netRtgIdx >= 0 ? netRtgIdx : 4,
+    adjO:   ortgIdx   >= 0 ? ortgIdx   : 5,
+    adjD:   drtgIdx   >= 0 ? drtgIdx   : 7,
+    adjT:   tempoIdx  >= 0 ? tempoIdx  : 9,
     luck:   luckIdx   >= 0 ? luckIdx   : 11,
     oppO:   oppOIdx   >= 0 ? oppOIdx   : 15,
     oppD:   oppDIdx   >= 0 ? oppDIdx   : 17,
@@ -336,30 +361,20 @@ function parseRatingsTable(html: string, season: string): KenPomRow[] {
     throw new Error(`KenPom table has only ${rows.length} rows — expected 360+`);
   }
 
-  // Find header row (contains <th> elements)
-  let colMap: ColMap | null = null;
-  let headerRowIdx = 0;
-  for (let i = 0; i < Math.min(rows.length, 5); i++) {
-    if (rows[i].includes('<th')) {
-      colMap = detectColumns(rows[i]);
-      headerRowIdx = i;
-      break;
-    }
-  }
-
-  if (!colMap) {
-    // Use defaults if no header found
-    colMap = { rank: 0, team: 1, conf: 2, record: 3, adjEM: 4, adjO: 5, adjD: 7, adjT: 9, luck: 11, oppO: 15, oppD: 17 };
-  }
+  // Pass all rows to detectColumns so it can find thead2 specifically
+  const colMap = detectColumns(rows);
+  // Data rows start after the last header row (thead1 + thead2 = 2 rows)
+  const lastHeaderIdx = rows.reduce((last, r, i) =>
+    (r.includes('thead1') || r.includes('thead2') || r.includes('<th')) ? i : last, 1);
 
   const teams: KenPomRow[] = [];
 
-  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+  for (let i = lastHeaderIdx + 1; i < rows.length; i++) {
     const row = rows[i];
 
     // Skip header/subheader rows that don't contain actual team data
     if (!row.includes('<td')) continue;
-    if (row.includes('class="thead"') || row.includes('class="subhead"')) continue;
+    if (row.includes('thead1') || row.includes('thead2') || row.includes('<th')) continue;
 
     const cells = parseTdValues(row);
     if (cells.length < 10) continue; // not a data row
