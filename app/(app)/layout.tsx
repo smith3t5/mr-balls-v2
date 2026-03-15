@@ -15,7 +15,10 @@ import STierAlert from './components/STierAlert';
 // ---------------------------------------------------------------------------
 const FRIEND_GROUP = [
   'Tyler',
-  'Add your friends here',
+  'John',
+  'Kevin A',
+  'Kevin H',
+  'Steven',
 ];
 
 const DEFAULT_STATS = {
@@ -125,11 +128,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="text-right">
                 <div className="text-sm font-semibold text-white">@{user.username}</div>
                 <div className="text-xs text-muted flex items-center justify-end gap-1">
-                  <span>{user.stats.wins}-{user.stats.losses}</span>
+                  <span>{user.stats?.wins ?? 0}-{user.stats?.losses ?? 0}</span>
                   <span className="text-gray-600">•</span>
                   <span className={`flex items-center gap-0.5 ${user.stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {user.stats.roi >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {user.stats.roi >= 0 ? '+' : ''}{user.stats.roi.toFixed(1)}%
+                    {(user.stats?.roi ?? 0) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    {(user.stats?.roi ?? 0) >= 0 ? '+' : ''}{(user.stats?.roi ?? 0).toFixed(1)}%
                   </span>
                 </div>
               </div>
