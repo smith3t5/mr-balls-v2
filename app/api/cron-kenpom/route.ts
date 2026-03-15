@@ -1,11 +1,9 @@
 /**
  * app/api/cron-kenpom/route.ts
  * Compatible with @cloudflare/next-on-pages v1.13.16
- *
- * Note: getRequestContext has broken type declarations in this version.
- * The @ts-ignore comments suppress the TS error — it works correctly at runtime.
  */
 
+import { getRequestContext } from '@cloudflare/next-on-pages';
 import { type NextRequest, NextResponse } from 'next/server';
 import { syncKenPomData, getLastSyncTime } from '@/lib/kenpom-sync';
 
@@ -18,8 +16,6 @@ function checkAuth(request: NextRequest, cronSecret: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  // @ts-ignore — type declarations broken in next-on-pages 1.13.x, works at runtime
-  const { getRequestContext } = await import('@cloudflare/next-on-pages');
   const { env } = getRequestContext();
 
   if (!checkAuth(request, (env as any).CRON_SECRET ?? '')) {
@@ -35,23 +31,21 @@ export async function POST(request: NextRequest) {
 
   if (!(env as any).DB) {
     return NextResponse.json(
-      { error: 'D1 binding DB not found — check Cloudflare Pages bindings' },
+      { error: 'D1 binding DB not found' },
       { status: 500 }
     );
   }
 
   const result = await syncKenPomData(
-    (env as any).DB,
-    (env as any).KENPOM_EMAIL,
-    (env as any).KENPOM_PASSWORD
+    (env as any).DB as D1Database,
+    (env as any).KENPOM_EMAIL as string,
+    (env as any).KENPOM_PASSWORD as string
   );
 
   return NextResponse.json(result, { status: result.success ? 200 : 500 });
 }
 
 export async function GET(request: NextRequest) {
-  // @ts-ignore — type declarations broken in next-on-pages 1.13.x, works at runtime
-  const { getRequestContext } = await import('@cloudflare/next-on-pages');
   const { env } = getRequestContext();
 
   if (!checkAuth(request, (env as any).CRON_SECRET ?? '')) {
