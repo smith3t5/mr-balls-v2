@@ -94,13 +94,6 @@ function normalizeGameNames(games: GameData[]): GameData[] {
 
 export async function POST(request: NextRequest) {
   try {
-    const sessionId = request.cookies.get('session_id')?.value;
-    if (!sessionId) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
 
     const { env } = getRequestContext();
     const kellyMultiplier = 0.25;
