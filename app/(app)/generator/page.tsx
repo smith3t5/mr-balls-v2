@@ -1,238 +1,268 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Sparkles,
-  Zap,
-  Settings,
-  Shuffle,
-  Save,
-  Share2,
-  TrendingUp,
-  Shield,
-  Target,
-  Flame,
-  ExternalLink,
-  CheckCircle2,
-  AlertTriangle,
-  Info,
-  Loader2,
-  Dices,
-  Calendar,
-  Lock,
+  Sparkles, Shuffle, Save, Share2, ExternalLink,
+  CheckCircle2, AlertTriangle, Info, Loader2, Lock,
+  Unlock, Calendar, Target, Flame, Brain,
+  ChevronDown, ChevronUp, RefreshCw, Plus, X,
 } from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const SPORTS = [
-  { key: 'americanfootball_nfl', name: 'NFL' },
-  { key: 'americanfootball_ncaaf', name: 'College Football' },
-  { key: 'basketball_nba', name: 'NBA' },
-  { key: 'basketball_ncaab', name: 'College Basketball' },
-  { key: 'icehockey_nhl', name: 'NHL' },
-  { key: 'baseball_mlb', name: 'MLB' },
+  { key: 'basketball_ncaab',     name: 'College Basketball', short: 'NCAAB' },
+  { key: 'americanfootball_nfl', name: 'NFL',                short: 'NFL'   },
+  { key: 'basketball_nba',       name: 'NBA',                short: 'NBA'   },
+  { key: 'icehockey_nhl',        name: 'NHL',                short: 'NHL'   },
+  { key: 'baseball_mlb',         name: 'MLB',                short: 'MLB'   },
 ];
 
 const BET_TYPES = [
-  { key: 'spread', name: 'Spreads' },
-  { key: 'over_under', name: 'Totals (O/U)' },
-  { key: 'moneyline', name: 'Moneyline' },
+  { key: 'spread',     name: 'Spreads'    },
+  { key: 'over_under', name: 'Totals'     },
+  { key: 'moneyline',  name: 'Moneyline'  },
 ];
 
-// Player props now use event-specific endpoint (works on all API tiers!)
-const EXTRA_MARKETS = [
-  // Basketball
-  { key: 'player_points', name: 'Player Points' },
+const NCAAB_PROPS = [
+  { key: 'player_points',   name: 'Player Points'   },
   { key: 'player_rebounds', name: 'Player Rebounds' },
-  { key: 'player_assists', name: 'Player Assists' },
-  { key: 'player_threes', name: 'Player 3-Pointers' },
+  { key: 'player_assists',  name: 'Player Assists'  },
+  { key: 'player_threes',   name: 'Player 3-Pointers' },
+];
 
-  // Football (NFL/NCAAF)
-  { key: 'player_pass_tds', name: 'Pass Touchdowns' },
-  { key: 'player_pass_yds', name: 'Passing Yards' },
-  { key: 'player_rush_yds', name: 'Rushing Yards' },
-  { key: 'player_reception_yds', name: 'Receiving Yards' },
-  { key: 'player_receptions', name: 'Receptions' },
-  { key: 'player_anytime_td', name: 'Anytime TD Scorer' },
-
-  // Baseball
-  { key: 'pitcher_strikeouts', name: 'Pitcher Strikeouts' },
-  { key: 'batter_home_runs', name: 'Batter Home Runs' },
-
-  // Hockey
-  { key: 'player_shots_on_goal', name: 'Shots on Goal' },
-  { key: 'player_points_hockey', name: 'Points (G+A)' },
+const OTHER_PROPS = [
+  { key: 'player_pass_tds',       name: 'Pass TDs'        },
+  { key: 'player_pass_yds',       name: 'Passing Yards'   },
+  { key: 'player_rush_yds',       name: 'Rushing Yards'   },
+  { key: 'player_reception_yds',  name: 'Receiving Yards' },
+  { key: 'player_anytime_td',     name: 'Anytime TD'      },
+  { key: 'pitcher_strikeouts',    name: 'Pitcher Ks'      },
+  { key: 'player_shots_on_goal',  name: 'Shots on Goal'   },
 ];
 
 const LOADING_MESSAGES = [
-  "Bribing the refs...",
-  "Checking the weather in Buffalo...",
-  "Consulting with sharp bettors...",
-  "Reading tea leaves and injury reports...",
-  "Analyzing decades of crushing disappointment...",
-  "Channeling the spirit of Vegas Dave...",
-  "Doing math that would make your accountant cry...",
-  "Ignoring your bank account balance...",
-  "Finding the most chaotic possible outcome...",
-  "Praying to the gambling gods...",
+  'Consulting KenPom efficiency margins...',
+  'Sniffing out situational spots...',
+  'Cross-referencing sharp money signals...',
+  'Checking pace mismatch data...',
+  'Identifying trap game candidates...',
+  'Analyzing fatigue spots...',
+  'Running the numbers the books hope you ignore...',
+  'Asking the oracle nicely...',
 ];
 
-const SUCCESS_MESSAGES = [
-  "Lock it in, this one's different!",
-  "Vegas doesn't want you to see this...",
-  "The sharps are all over these picks!",
-  "Mortgage the house? (kidding... unless?)",
-  "This parlay was blessed by Bill Belichick himself",
-  "Your bookie is NOT gonna like this one",
-  "The Oracle has spoken. Hammer time.",
-  "Zero luck. All skill. Mostly luck.",
-  "This is the one that changes everything!",
-  "Statistical arbitrage or pure chaos? Yes.",
+// ---------------------------------------------------------------------------
+// NCAAB-focused presets
+// ---------------------------------------------------------------------------
+const PRESETS = [
+  {
+    id: 'kenpom',
+    name: 'KenPom Value',
+    icon: Brain,
+    description: '3-4 legs · Efficiency-driven · Spread & total edges',
+    color: 'text-blue-400',
+    border: 'hover:border-blue-500/50',
+    config: {
+      sports: ['basketball_ncaab'],
+      legs: 3,
+      betTypes: ['spread', 'over_under'],
+      extraMarkets: [],
+      oddsMin: -180,
+      oddsMax: 200,
+      minTier: 'B' as const,
+      sgpMode: 'none' as const,
+    },
+  },
+  {
+    id: 'spots',
+    name: 'Situational Spots',
+    icon: Target,
+    description: '3-4 legs · Fatigue, trap games, pace mismatches',
+    color: 'text-emerald-400',
+    border: 'hover:border-emerald-500/50',
+    config: {
+      sports: ['basketball_ncaab'],
+      legs: 4,
+      betTypes: ['spread', 'over_under', 'moneyline'],
+      extraMarkets: [],
+      oddsMin: -150,
+      oddsMax: 300,
+      minTier: 'B' as const,
+      sgpMode: 'none' as const,
+    },
+  },
+  {
+    id: 'chaos',
+    name: 'Chaos Mode',
+    icon: Flame,
+    description: '5-6 legs · Longer odds · Swinging for the fences',
+    color: 'text-red-400',
+    border: 'hover:border-red-500/50',
+    config: {
+      sports: ['basketball_ncaab'],
+      legs: 5,
+      betTypes: ['spread', 'over_under', 'moneyline'],
+      extraMarkets: [],
+      oddsMin: -130,
+      oddsMax: 400,
+      minTier: 'C' as const,
+      sgpMode: 'none' as const,
+    },
+  },
 ];
 
+// ---------------------------------------------------------------------------
+// DraftKings deep link builder
+// ---------------------------------------------------------------------------
+function buildDraftKingsDeepLink(legs: any[]): string {
+  // DraftKings betslip deep link format
+  // Each leg contributes a selection ID. Without real event IDs from DK's system
+  // we build the best available search link for each game.
+  // The most reliable approach: open DK's parlay builder with the first game.
+  // In production you'd map Odds API event IDs → DK event IDs.
+  const firstLeg = legs[0];
+  if (!firstLeg?.dk_link) {
+    return 'https://sportsbook.draftkings.com/leagues/basketball/ncaab';
+  }
+
+  // If we have a dk_link on the leg, use it as the entry point
+  return firstLeg.dk_link;
+}
+
+// ---------------------------------------------------------------------------
+// Grade badge
+// ---------------------------------------------------------------------------
+function GradeBadge({ grade }: { grade: string }) {
+  const styles: Record<string, string> = {
+    S: 'bg-gradient-to-br from-yellow-400 to-amber-500 text-slate-900',
+    A: 'bg-gradient-to-br from-emerald-400 to-green-500 text-white',
+    B: 'bg-gradient-to-br from-blue-400 to-cyan-500 text-white',
+    C: 'bg-slate-600 text-white',
+    D: 'bg-slate-700 text-gray-400',
+  };
+  return (
+    <div className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-black text-xs ${styles[grade] ?? styles.D}`}>
+      {grade}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 export default function Generator() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [generating, setGenerating] = useState(false);
-  const [parlay, setParlay] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [loadingMessage, setLoadingMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [lockedSharpPlay, setLockedSharpPlay] = useState<any>(null);
-
   // Form state
-  const [selectedSports, setSelectedSports] = useState(['americanfootball_nfl']);
-  const [numLegs, setNumLegs] = useState(3);
-  const [betTypes, setBetTypes] = useState(['spread', 'over_under']);
-  const [extraMarkets, setExtraMarkets] = useState<string[]>([]);
-  const [oddsMin, setOddsMin] = useState(-300);
-  const [oddsMax, setOddsMax] = useState(300);
-  const [sgpMode, setSgpMode] = useState<'none' | 'allow' | 'only'>('none');
-  const [stake, setStake] = useState(10);
-  const [minTier, setMinTier] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C'); // Default to C or better
-  const [lockedLegs, setLockedLegs] = useState<any[]>([]); // Legs locked by user
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [selectedSports, setSelectedSports] = useState<string[]>(['basketball_ncaab']);
+  const [numLegs, setNumLegs]               = useState(3);
+  const [betTypes, setBetTypes]             = useState(['spread', 'over_under']);
+  const [extraMarkets, setExtraMarkets]     = useState<string[]>([]);
+  const [oddsMin, setOddsMin]               = useState(-180);
+  const [oddsMax, setOddsMax]               = useState(250);
+  const [sgpMode, setSgpMode]               = useState<'none' | 'allow' | 'only'>('none');
+  const [minTier, setMinTier]               = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C');
+  const [showAdvanced, setShowAdvanced]     = useState(false);
 
-  // Check for locked sharp play or preset
-  useEffect(() => {
-    // Check for locked sharp play
-    if (searchParams.get('locked') === 'sharp') {
-      const sharpPlayData = sessionStorage.getItem('locked_sharp_play');
-      if (sharpPlayData) {
-        const sharpPlay = JSON.parse(sharpPlayData);
-        setLockedSharpPlay(sharpPlay);
-        sessionStorage.removeItem('locked_sharp_play');
+  // Parlay state
+  const [generating, setGenerating]   = useState(false);
+  const [parlay, setParlay]           = useState<any>(null);
+  const [error, setError]             = useState('');
+  const [loadingMsg, setLoadingMsg]   = useState('');
+  const [lockedLegs, setLockedLegs]   = useState<any[]>([]);
+  const [stake, setStake]             = useState(10);
 
-        // Auto-generate with sharp play locked
-        setNumLegs(1);
-        setTimeout(() => handleGenerate(), 500);
+  // Manual pick state
+  const [manualPicks, setManualPicks]       = useState<any[]>([]);
+  const [showPickBuilder, setShowPickBuilder] = useState(false);
+  const [pickTeam, setPickTeam]             = useState('');
+  const [pickBetType, setPickBetType]       = useState('spread');
+  const [pickLine, setPickLine]             = useState('');
+
+  const addManualPick = () => {
+    if (!pickTeam.trim()) return;
+    const pick = {
+      id: crypto.randomUUID(),
+      label: `${pickTeam} ${pickBetType === 'spread' ? pickLine : pickBetType === 'total' ? `${pickLine.startsWith('O') || pickLine.startsWith('U') ? '' : 'O/U '}${pickLine}` : 'ML'}`,
+      team: pickTeam.trim(),
+      betType: pickBetType,
+      line: pickLine,
+    };
+    setManualPicks(prev => [...prev, pick]);
+    setPickTeam('');
+    setPickLine('');
+    setShowPickBuilder(false);
+    toast.success('Pick added — it will be locked in on generate');
+  };
+
+  const applyPreset = (preset: typeof PRESETS[0]) => {
+    const c = preset.config;
+    setSelectedSports(c.sports);
+    setNumLegs(c.legs);
+    setBetTypes(c.betTypes);
+    setExtraMarkets(c.extraMarkets);
+    setOddsMin(c.oddsMin);
+    setOddsMax(c.oddsMax);
+    setMinTier(c.minTier);
+    setSgpMode(c.sgpMode);
+  };
+
+  const toggleSport = (s: string) =>
+    setSelectedSports(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
+  const toggleBetType = (t: string) =>
+    setBetTypes(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const toggleMarket = (m: string) =>
+    setExtraMarkets(p => p.includes(m) ? p.filter(x => x !== m) : [...p, m]);
+  const toggleLock = (leg: any) => {
+    const key = `${leg.event_id}_${leg.pick}`;
+    setLockedLegs(prev => {
+      const exists = prev.some(l => `${l.event_id}_${l.pick}` === key);
+      if (exists) {
+        toast('Leg unlocked');
+        return prev.filter(l => `${l.event_id}_${l.pick}` !== key);
       }
-    }
-
-    // Check for preset parameter
-    const preset = searchParams.get('preset');
-    if (preset === 'conservative' || preset === 'balanced' || preset === 'aggressive') {
-      setTimeout(() => applyPreset(preset), 100);
-    }
-  }, [searchParams]);
-
-  const toggleSport = (sport: string) => {
-    setSelectedSports(prev =>
-      prev.includes(sport)
-        ? prev.filter(s => s !== sport)
-        : [...prev, sport]
-    );
+      toast.success('Leg locked — regenerate to keep it');
+      return [...prev, leg];
+    });
   };
 
-  const toggleBetType = (type: string) => {
-    setBetTypes(prev =>
-      prev.includes(type)
-        ? prev.filter(t => t !== type)
-        : [...prev, type]
-    );
-  };
+  const isLocked = (leg: any) =>
+    lockedLegs.some(l => `${l.event_id}_${l.pick}` === `${leg.event_id}_${leg.pick}`);
 
-  const toggleExtraMarket = (market: string) => {
-    setExtraMarkets(prev =>
-      prev.includes(market)
-        ? prev.filter(m => m !== market)
-        : [...prev, market]
-    );
-  };
-
-  const applyPreset = (preset: 'conservative' | 'balanced' | 'aggressive') => {
-    switch (preset) {
-      case 'conservative':
-        setNumLegs(2 + Math.floor(Math.random() * 2)); // 2-3 legs
-        setOddsMin(-200);
-        setOddsMax(150);
-        setBetTypes(['moneyline', 'spread']);
-        setExtraMarkets([]);
-        break;
-      case 'balanced':
-        setNumLegs(3 + Math.floor(Math.random() * 2)); // 3-4 legs
-        setOddsMin(-250);
-        setOddsMax(250);
-        setBetTypes(['moneyline', 'spread', 'over_under']);
-        setExtraMarkets([]);
-        break;
-      case 'aggressive':
-        setNumLegs(5 + Math.floor(Math.random() * 2)); // 5-6 legs
-        setOddsMin(-150);
-        setOddsMax(400);
-        setBetTypes(['spread', 'over_under']);
-        setExtraMarkets(['player_points', 'player_assists']);
-        break;
-    }
-    // Auto-generate after preset is applied
-    setTimeout(() => handleGenerate(), 100);
-  };
-
-  const handleGenerate = async () => {
-    if (selectedSports.length === 0) {
-      setError('Select at least one sport');
-      return;
-    }
-    if (betTypes.length === 0 && extraMarkets.length === 0) {
-      setError('Select at least one bet type');
-      return;
-    }
+  const handleGenerate = async (keepLocked = false) => {
+    if (selectedSports.length === 0) { setError('Select at least one sport'); return; }
+    if (betTypes.length === 0 && extraMarkets.length === 0) { setError('Select at least one bet type'); return; }
 
     setGenerating(true);
     setError('');
-    setLoadingMessage(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
+    if (!keepLocked) setLockedLegs([]);
+    setLoadingMsg(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
 
     try {
       const response = await fetch('/api/analytics/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sports: selectedSports,
-          legs: numLegs,
-          odds_min: oddsMin,
-          odds_max: oddsMax,
-          bet_types: betTypes,
+          sports:        selectedSports,
+          legs:          numLegs,
+          odds_min:      oddsMin,
+          odds_max:      oddsMax,
+          bet_types:     betTypes,
           extra_markets: extraMarkets,
-          sgp_mode: sgpMode,
-          locked: lockedLegs,
-          min_edge: 0, // Use 0 internally, not user-configurable
-          min_tier: minTier,
-          mode: 'max_value',
-          date_from: dateFrom,
-          date_to: dateTo,
+          sgp_mode:      sgpMode,
+          locked:        keepLocked ? lockedLegs : [],
+          min_edge:      0,
+          min_tier:      minTier,
+          mode:          'max_value',
         }),
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate parlay');
-      }
-
+      if (!response.ok) throw new Error(data.error || 'Failed to generate parlay');
       setParlay(data);
-      setSuccessMessage(SUCCESS_MESSAGES[Math.floor(Math.random() * SUCCESS_MESSAGES.length)]);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -240,174 +270,137 @@ export default function Generator() {
     }
   };
 
+  const handleRegenerate = () => handleGenerate(true);
+
   const handleSave = async () => {
     if (!parlay) return;
+    const stored = localStorage.getItem('mrb_user');
+    const username = stored ? JSON.parse(stored).username : 'Unknown';
 
     try {
-      // Calculate potential return
+      const response = await fetch('/api/bets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          bet: {
+            stake,
+            meta: parlay.meta,
+            legs: parlay.parlay,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      toast.success('Parlay saved to portfolio!');
+    } catch (err: any) {
+      // Fallback to localStorage
+      const betId = crypto.randomUUID();
       const parlayOdds = parlay.meta.parlay_odds;
       const potentialReturn = stake + (parlayOdds > 0
         ? stake * (parlayOdds / 100)
         : stake * (100 / Math.abs(parlayOdds)));
 
-      // Create new bet object
       const newBet = {
-        id: crypto.randomUUID(),
-        user_id: 'user-1',
-        created_at: Date.now(),
-        status: 'pending',
-        stake: stake,
-        odds: parlayOdds,
-        potential_return: potentialReturn,
-        notes: `Generated with ${parlay.meta.total_confidence.toFixed(1)}/10 confidence`,
-        legs: parlay.parlay.map((leg: any) => ({
-          id: crypto.randomUUID(),
-          sport: leg.sport,
-          event_id: leg.event_id,
-          event_name: leg.event_name,
-          commence_time: leg.commence_time,
-          market: leg.market,
-          pick: leg.pick,
-          odds: leg.odds,
-          status: 'pending',
-          participant: leg.participant,
-          point: leg.point,
-          bet_kind: leg.bet_kind,
-          bet_tag: leg.bet_tag,
-          dk_link: leg.dk_link,
-          confidence: leg.confidence,
-          edge: leg.edge,
-          expected_value: leg.expected_value,
-          kelly_units: leg.kelly_units,
-          bet_grade: leg.bet_grade,
-          true_probability: leg.true_probability,
-          implied_probability: leg.implied_probability,
-          factors: leg.factors,
-          locked_by_user: leg.locked_by_user || false,
-        })),
+        id: betId, created_at: Date.now(), status: 'pending',
+        stake, odds: parlayOdds, potential_return: potentialReturn,
+        confidence: parlay.meta.total_confidence,
+        legs: parlay.parlay,
       };
 
-      // Save to localStorage
       const storedBets = localStorage.getItem('bets');
       const allBets = storedBets ? JSON.parse(storedBets) : [];
       allBets.unshift(newBet);
       localStorage.setItem('bets', JSON.stringify(allBets));
-
-      toast.success('Parlay saved to portfolio!');
-      router.push('/portfolio');
-    } catch (err: any) {
-      toast.error(err.message);
+      toast.success('Saved locally (D1 unavailable)');
     }
   };
 
-  const handleShareParlay = () => {
+  const handleOpenDraftKings = () => {
     if (!parlay) return;
+    const url = buildDraftKingsDeepLink(parlay.parlay);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
-    const shareText = generateParlayShareText({
-      legs: parlay.parlay.map((leg: any) => ({
-        event_name: leg.event_name,
-        pick: leg.pick,
-        odds: leg.odds,
-      })),
+  const handleShare = () => {
+    if (!parlay) return;
+    const text = generateParlayShareText({
+      legs: parlay.parlay.map((l: any) => ({ event_name: l.event_name, pick: l.pick, odds: l.odds })),
       parlay_odds: parlay.meta.parlay_odds,
       confidence: parlay.meta.total_confidence,
       avg_edge: parlay.meta.avg_edge,
     });
-
-    // Copy to clipboard
-    navigator.clipboard.writeText(shareText).then(() => {
-      toast.success('Parlay copied to clipboard! Share it with the boys');
-    }).catch(() => {
-      toast.error('Failed to copy. Please try again.');
-    });
+    navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard!'));
   };
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="heading-lg flex items-center gap-3">
-          <Sparkles className="w-8 h-8 text-amber-500" />
-          Smart Parlay Generator
-        </h1>
-        <p className="text-muted mt-2">AI-powered picks based on value, sharp money, weather & more</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="heading-lg flex items-center gap-3">
+            <Sparkles className="w-8 h-8 text-amber-500" />
+            Parlay Generator
+          </h1>
+          <p className="text-muted mt-1">KenPom-powered picks with situational edge detection</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Configuration Panel */}
-        <div className="lg:col-span-1 space-y-6">
-          {/* Quick Presets */}
-          <div className="card-glass border-amber-500/30">
-            <h3 className="heading-sm flex items-center gap-2 mb-3">
-              <Zap className="w-5 h-5 text-amber-500" />
-              Quick Presets
-            </h3>
-            <p className="text-xs text-muted mb-4">Auto-generate with optimized settings</p>
+        {/* ---------------------------------------------------------------- */}
+        {/* LEFT: Configuration                                              */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="lg:col-span-1 space-y-5">
+
+          {/* NCAAB Presets */}
+          <div className="card-glass">
+            <h3 className="heading-sm mb-4">Presets</h3>
             <div className="space-y-2">
-              <button
-                onClick={() => applyPreset('conservative')}
-                disabled={generating}
-                className="w-full px-4 py-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-amber-500/50 transition-all text-left disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-white flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-blue-400" />
-                      Conservative
+              {PRESETS.map(preset => {
+                const Icon = preset.icon;
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => { applyPreset(preset); setTimeout(() => handleGenerate(false), 100); }}
+                    disabled={generating}
+                    className={`w-full px-4 py-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 ${preset.border} transition-all text-left disabled:opacity-50`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className={`font-bold text-white flex items-center gap-2 ${preset.color}`}>
+                          <Icon className="w-4 h-4" />
+                          {preset.name}
+                        </div>
+                        <div className="text-xs text-muted mt-0.5">{preset.description}</div>
+                      </div>
+                      <Sparkles className="w-4 h-4 text-gray-500" />
                     </div>
-                    <div className="text-xs text-muted mt-1">2-3 legs • Safer odds • Favorites</div>
-                  </div>
-                  <TrendingUp className="w-5 h-5 text-gray-400" />
-                </div>
-              </button>
-              <button
-                onClick={() => applyPreset('balanced')}
-                disabled={generating}
-                className="w-full px-4 py-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-amber-500/50 transition-all text-left disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-white flex items-center gap-2">
-                      <Target className="w-4 h-4 text-emerald-400" />
-                      Balanced
-                    </div>
-                    <div className="text-xs text-muted mt-1">3-4 legs • Moderate odds • Mixed</div>
-                  </div>
-                  <TrendingUp className="w-5 h-5 text-gray-400" />
-                </div>
-              </button>
-              <button
-                onClick={() => applyPreset('aggressive')}
-                disabled={generating}
-                className="w-full px-4 py-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-amber-500/50 transition-all text-left disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-white flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-red-400" />
-                      Aggressive
-                    </div>
-                    <div className="text-xs text-muted mt-1">5-6 legs • High odds • With props</div>
-                  </div>
-                  <TrendingUp className="w-5 h-5 text-gray-400" />
-                </div>
-              </button>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Sports Selection */}
+          {/* Sports */}
           <div className="card-glass">
             <h3 className="heading-sm mb-3">Sports</h3>
             <div className="space-y-2">
-              {SPORTS.map(sport => (
-                <label key={sport.key} className="flex items-center gap-2 cursor-pointer group">
+              {SPORTS.map(s => (
+                <label key={s.key} className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
-                    checked={selectedSports.includes(sport.key)}
-                    onChange={() => toggleSport(sport.key)}
-                    className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
+                    checked={selectedSports.includes(s.key)}
+                    onChange={() => toggleSport(s.key)}
+                    className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500"
                   />
-                  <span className="text-sm text-secondary group-hover:text-white transition-colors">{sport.name}</span>
+                  <span className="text-sm text-secondary group-hover:text-white transition-colors">
+                    {s.name}
+                    <span className="ml-1 text-xs text-gray-600">{s.short}</span>
+                  </span>
                 </label>
               ))}
             </div>
@@ -417,386 +410,407 @@ export default function Generator() {
           <div className="card-glass">
             <h3 className="heading-sm mb-3">Bet Types</h3>
             <div className="space-y-2">
-              {BET_TYPES.map(type => (
-                <label key={type.key} className="flex items-center gap-2 cursor-pointer group">
+              {BET_TYPES.map(t => (
+                <label key={t.key} className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
-                    checked={betTypes.includes(type.key)}
-                    onChange={() => toggleBetType(type.key)}
-                    className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
+                    checked={betTypes.includes(t.key)}
+                    onChange={() => toggleBetType(t.key)}
+                    className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500"
                   />
-                  <span className="text-sm text-secondary group-hover:text-white transition-colors">{type.name}</span>
+                  <span className="text-sm text-secondary group-hover:text-white transition-colors">{t.name}</span>
                 </label>
               ))}
             </div>
 
             <div className="mt-4 pt-4 border-t border-slate-700/50">
-              <h4 className="text-sm font-semibold mb-2 text-muted">Player Props</h4>
+              <h4 className="text-sm font-semibold text-muted mb-2">Player Props</h4>
               <div className="space-y-2">
-                {EXTRA_MARKETS.map(market => (
-                  <label key={market.key} className="flex items-center gap-2 cursor-pointer group">
+                {NCAAB_PROPS.map(m => (
+                  <label key={m.key} className="flex items-center gap-2 cursor-pointer group">
                     <input
                       type="checkbox"
-                      checked={extraMarkets.includes(market.key)}
-                      onChange={() => toggleExtraMarket(market.key)}
-                      className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
+                      checked={extraMarkets.includes(m.key)}
+                      onChange={() => toggleMarket(m.key)}
+                      className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500"
                     />
-                    <span className="text-sm text-secondary group-hover:text-white transition-colors">{market.name}</span>
+                    <span className="text-sm text-secondary group-hover:text-white transition-colors">{m.name}</span>
+                  </label>
+                ))}
+                {OTHER_PROPS.map(m => (
+                  <label key={m.key} className="flex items-center gap-2 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={extraMarkets.includes(m.key)}
+                      onChange={() => toggleMarket(m.key)}
+                      className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                    />
+                    <span className="text-sm text-secondary group-hover:text-white transition-colors">{m.name}</span>
                   </label>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Advanced Settings */}
+          {/* Manual pick builder */}
           <div className="card-glass">
-            <h3 className="heading-sm flex items-center gap-2 mb-3">
-              <Settings className="w-5 h-5 text-gray-400" />
-              Settings
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-2">
-                  Number of Legs <span className="text-xs text-muted font-normal">(1 for single bet)</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="8"
-                  value={numLegs}
-                  onChange={(e) => setNumLegs(parseInt(e.target.value))}
-                  className="input input-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-2">
-                  Date Range <span className="text-xs text-muted font-normal">(optional)</span>
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="input input-sm flex-1"
-                    placeholder="From"
-                  />
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="input input-sm flex-1"
-                    placeholder="To"
-                  />
-                </div>
-                <p className="text-xs text-muted mt-1">
-                  Filter games by start date. Leave blank for all upcoming games.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-2">
-                  Odds Range <span className="text-xs text-muted font-normal">(per leg)</span>
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={oddsMin}
-                    onChange={(e) => setOddsMin(parseInt(e.target.value))}
-                    placeholder="Min"
-                    className="input input-sm flex-1"
-                  />
-                  <input
-                    type="number"
-                    value={oddsMax}
-                    onChange={(e) => setOddsMax(parseInt(e.target.value))}
-                    placeholder="Max"
-                    className="input input-sm flex-1"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-2">Same Game Parlay</label>
-                <select
-                  value={sgpMode}
-                  onChange={(e) => setSgpMode(e.target.value as any)}
-                  className="input input-sm"
-                >
-                  <option value="none">Different Games Only</option>
-                  <option value="allow">Allow Mixed</option>
-                  <option value="only">Same Game Only</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-2">
-                  Minimum Bet Quality
-                </label>
-                <select
-                  value={minTier}
-                  onChange={(e) => setMinTier(e.target.value as any)}
-                  className="input input-sm"
-                >
-                  <option value="any">Any Quality</option>
-                  <option value="D">D-Tier or Better</option>
-                  <option value="C">C-Tier or Better (Recommended)</option>
-                  <option value="B">B-Tier or Better</option>
-                  <option value="A">A-Tier or Better</option>
-                  <option value="S">S-Tier Only (Elite)</option>
-                </select>
-                <p className="text-xs text-muted mt-1">
-                  Filter bets by quality grade. Higher tiers = better expected value.
-                </p>
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="heading-sm">Anchor Picks</h3>
+              <button
+                onClick={() => setShowPickBuilder(p => !p)}
+                className="btn-xs btn-secondary flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                Add
+              </button>
             </div>
+
+            {showPickBuilder && (
+              <div className="space-y-3 mb-4 p-3 rounded-xl bg-slate-900/50 border border-slate-700/50">
+                <input
+                  type="text"
+                  placeholder="Team name (e.g. Duke)"
+                  value={pickTeam}
+                  onChange={e => setPickTeam(e.target.value)}
+                  className="input-sm"
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={pickBetType}
+                    onChange={e => setPickBetType(e.target.value)}
+                    className="input-sm flex-1"
+                  >
+                    <option value="spread">Spread</option>
+                    <option value="moneyline">Moneyline</option>
+                    <option value="total">Total</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder={pickBetType === 'spread' ? '-3.5' : pickBetType === 'total' ? 'O 142.5' : 'ML'}
+                    value={pickLine}
+                    onChange={e => setPickLine(e.target.value)}
+                    className="input-sm flex-1"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={addManualPick} className="btn-primary btn-xs flex-1">Add Pick</button>
+                  <button onClick={() => setShowPickBuilder(false)} className="btn-secondary btn-xs">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {manualPicks.length > 0 ? (
+              <div className="space-y-2">
+                {manualPicks.map(pick => (
+                  <div key={pick.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <div>
+                      <div className="text-xs font-bold text-amber-400">{pick.team}</div>
+                      <div className="text-xs text-muted">{pick.label}</div>
+                    </div>
+                    <button
+                      onClick={() => setManualPicks(p => p.filter(x => x.id !== pick.id))}
+                      className="text-gray-500 hover:text-red-400 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted">Add specific teams or bets to anchor the parlay around them.</p>
+            )}
           </div>
 
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Shuffle className="w-5 h-5" />
-                Find Sharp Plays
-              </>
+          {/* Settings */}
+          <div className="card-glass">
+            <button
+              onClick={() => setShowAdvanced(p => !p)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <h3 className="heading-sm">Settings</h3>
+              {showAdvanced ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-4 mt-4 pt-4 border-t border-slate-700/50">
+                <div>
+                  <label className="block text-sm font-medium text-secondary mb-2">Legs</label>
+                  <input type="number" min="1" max="8" value={numLegs}
+                    onChange={e => setNumLegs(parseInt(e.target.value))} className="input-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary mb-2">Odds Range</label>
+                  <div className="flex gap-2">
+                    <input type="number" value={oddsMin} onChange={e => setOddsMin(parseInt(e.target.value))}
+                      placeholder="Min" className="input-sm flex-1" />
+                    <input type="number" value={oddsMax} onChange={e => setOddsMax(parseInt(e.target.value))}
+                      placeholder="Max" className="input-sm flex-1" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary mb-2">Minimum Quality</label>
+                  <select value={minTier} onChange={e => setMinTier(e.target.value as any)} className="input-sm">
+                    <option value="any">Any</option>
+                    <option value="D">D or better</option>
+                    <option value="C">C or better</option>
+                    <option value="B">B or better</option>
+                    <option value="A">A or better</option>
+                    <option value="S">S only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary mb-2">Same Game Parlay</label>
+                  <select value={sgpMode} onChange={e => setSgpMode(e.target.value as any)} className="input-sm">
+                    <option value="none">Different games only</option>
+                    <option value="allow">Allow mixed</option>
+                    <option value="only">Same game only</option>
+                  </select>
+                </div>
+              </div>
             )}
-          </button>
+          </div>
+
+          {/* Generate buttons */}
+          <div className="space-y-2">
+            <button
+              onClick={() => handleGenerate(false)}
+              disabled={generating}
+              className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2"
+            >
+              {generating ? <><Loader2 className="w-5 h-5 animate-spin" /> Analyzing...</> : <><Shuffle className="w-5 h-5" /> Generate Parlay</>}
+            </button>
+
+            {parlay && lockedLegs.length > 0 && (
+              <button
+                onClick={handleRegenerate}
+                disabled={generating}
+                className="w-full btn-secondary py-3 flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Regenerate Unlocked Legs ({parlay.parlay.length - lockedLegs.length} legs)
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Results Panel */}
+        {/* ---------------------------------------------------------------- */}
+        {/* RIGHT: Results                                                   */}
+        {/* ---------------------------------------------------------------- */}
         <div className="lg:col-span-2">
           {error && (
-            <div className="card-error mb-6">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" />
-                <p>{error}</p>
-              </div>
+            <div className="card-error mb-4 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <p>{error}</p>
             </div>
           )}
 
           {generating && (
-            <div className="card-glass text-center py-12">
-              <Loader2 className="w-16 h-16 text-amber-500 mx-auto mb-4 animate-spin" />
-              <p className="text-secondary mb-2 text-lg font-semibold">{loadingMessage}</p>
-              <p className="text-sm text-muted">Analyzing odds, weather, sharp money & trends</p>
+            <div className="card-glass text-center py-16">
+              <Loader2 className="w-14 h-14 text-amber-500 mx-auto mb-4 animate-spin" />
+              <p className="text-secondary text-lg font-semibold">{loadingMsg}</p>
+              <p className="text-sm text-muted mt-1">Cross-referencing KenPom efficiency data</p>
             </div>
           )}
 
           {parlay && !generating && (
             <div className="space-y-4">
-              {/* Success Message Banner */}
-              <div className="card-success text-center py-4">
-                <p className="text-lg font-bold text-white flex items-center justify-center gap-2">
-                  <Sparkles className="w-5 h-5" />
-                  {successMessage}
-                </p>
-              </div>
-
-              {/* Summary Card */}
-              <div className="card-glass border-amber-500/30">
-                <div className="flex items-center justify-between mb-4">
+              {/* Summary */}
+              <div className="card-glass border-amber-500/20">
+                <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-2xl font-bold mb-1">{parlay.parlay.length}-Leg Parlay</h3>
-                    <p className="text-sm text-secondary">
-                      Confidence: <span className="text-amber-400 font-bold">{parlay.meta.total_confidence.toFixed(1)}/10</span>
-                      <span className="mx-2 text-gray-600">•</span>
-                      Avg Edge: <span className="text-emerald-400 font-bold">{parlay.meta.avg_edge.toFixed(1)}%</span>
-                    </p>
+                    <h3 className="text-2xl font-bold">{parlay.parlay.length}-Leg Parlay</h3>
+                    <div className="flex items-center gap-3 mt-1 text-sm">
+                      <span className="text-muted">Confidence: <span className="text-amber-400 font-bold">{parlay.meta.total_confidence.toFixed(1)}/10</span></span>
+                      <span className="text-gray-600">•</span>
+                      <span className="text-muted">Avg Edge: <span className="text-emerald-400 font-bold">{parlay.meta.avg_edge.toFixed(1)}%</span></span>
+                      {lockedLegs.length > 0 && (
+                        <>
+                          <span className="text-gray-600">•</span>
+                          <span className="text-amber-400 font-semibold flex items-center gap-1">
+                            <Lock className="w-3 h-3" />{lockedLegs.length} locked
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="text-3xl font-bold text-amber-400">
                       {parlay.meta.parlay_odds > 0 ? '+' : ''}{parlay.meta.parlay_odds}
                     </div>
-                    <div className="text-sm text-muted">Parlay Odds</div>
+                    <div className="text-xs text-muted">parlay odds</div>
                   </div>
                 </div>
-                <button
-                  onClick={handleShareParlay}
-                  className="w-full btn-secondary flex items-center justify-center gap-2"
-                >
-                  <Share2 className="w-4 h-4" />
-                  Share with the Boys
-                </button>
+
+                {/* Action buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={handleOpenDraftKings}
+                    className="btn-success btn-sm flex items-center justify-center gap-1.5"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open in DraftKings
+                  </button>
+                  <button
+                    onClick={handleShare}
+                    className="btn-secondary btn-sm flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Share
+                  </button>
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={generating}
+                    className="btn-secondary btn-sm flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Regenerate
+                  </button>
+                </div>
               </div>
 
               {/* Legs */}
-              {parlay.parlay.map((leg: any, i: number) => (
-                <div key={i} className="card-hover">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-bold text-muted">LEG {i + 1}</span>
-                        <span className="badge-neutral badge-xs">
-                          {leg.sport.replace('_', ' ').toUpperCase()}
-                        </span>
+              {parlay.parlay.map((leg: any, i: number) => {
+                const locked = isLocked(leg);
+                return (
+                  <div key={i} className={`card-hover ${locked ? 'border-amber-500/40' : ''}`}>
+                    {/* Locked indicator */}
+                    {locked && (
+                      <div className="flex items-center gap-1.5 mb-2 text-xs text-amber-400 font-semibold">
+                        <Lock className="w-3 h-3" />
+                        Locked — will stay on regenerate
                       </div>
-                      <h4 className="font-bold text-lg text-white">{leg.event_name}</h4>
-                      <p className="text-xs text-muted mt-1 flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(leg.commence_time).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                      <p className="text-amber-400 font-semibold mt-1">{leg.pick}</p>
-                    </div>
-                    <div className="text-right ml-4">
-                      <div className="flex items-center gap-2 justify-end mb-2">
+                    )}
+
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-muted">LEG {i + 1}</span>
+                          <span className="badge-neutral badge-xs">
+                            {SPORTS.find(s => s.key === leg.sport)?.short ?? leg.sport}
+                          </span>
+                          {leg.bet_grade && <GradeBadge grade={leg.bet_grade} />}
+                        </div>
+                        <h4 className="font-bold text-white">{leg.event_name}</h4>
+                        <p className="text-xs text-muted mt-0.5 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(leg.commence_time).toLocaleString('en-US', {
+                            month: 'short', day: 'numeric',
+                            hour: 'numeric', minute: '2-digit',
+                          })}
+                        </p>
+                        <p className="text-amber-400 font-bold mt-1 text-lg">{leg.pick}</p>
+                      </div>
+
+                      <div className="text-right ml-4 flex flex-col items-end gap-2">
+                        <div className="text-2xl font-bold">
+                          {leg.odds > 0 ? '+' : ''}{leg.odds}
+                        </div>
                         <button
-                          onClick={() => {
-                            const isLocked = lockedLegs.some(l => l.event_id === leg.event_id && l.pick === leg.pick);
-                            if (isLocked) {
-                              setLockedLegs(lockedLegs.filter(l => !(l.event_id === leg.event_id && l.pick === leg.pick)));
-                              toast.success('Leg unlocked');
-                            } else {
-                              setLockedLegs([...lockedLegs, leg]);
-                              toast.success('Leg locked! Click regenerate to build around it.');
-                            }
-                          }}
-                          className={`btn-xs ${lockedLegs.some(l => l.event_id === leg.event_id && l.pick === leg.pick) ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-white hover:bg-slate-600'}`}
+                          onClick={() => toggleLock(leg)}
+                          className={`btn-xs flex items-center gap-1 ${locked ? 'bg-amber-500 text-slate-900 font-bold' : 'btn-secondary'}`}
                         >
-                          <Lock className="w-3 h-3" />
+                          {locked ? <><Lock className="w-3 h-3" /> Locked</> : <><Unlock className="w-3 h-3" /> Lock</>}
                         </button>
-                      </div>
-                      <div className="text-2xl font-bold">{leg.odds > 0 ? '+' : ''}{leg.odds}</div>
-                      <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        {leg.confidence.toFixed(1)}
+                        {leg.dk_link && (
+                          <a
+                            href={leg.dk_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-xs btn-secondary flex items-center gap-1"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            DK
+                          </a>
+                        )}
                       </div>
                     </div>
+
+                    {/* Metrics row */}
+                    {leg.expected_value !== undefined && (
+                      <div className="grid grid-cols-4 gap-2 mb-3 p-3 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                        <div className="text-center">
+                          <div className="text-xs text-muted mb-0.5">EV</div>
+                          <div className={`text-sm font-bold ${leg.expected_value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {leg.expected_value >= 0 ? '+' : ''}{leg.expected_value.toFixed(1)}%
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs text-muted mb-0.5">Kelly</div>
+                          <div className="text-sm font-bold text-white">{(leg.kelly_units ?? 0).toFixed(1)}u</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs text-muted mb-0.5">True %</div>
+                          <div className="text-sm font-bold text-white">
+                            {leg.true_probability ? (leg.true_probability * 100).toFixed(0) : '--'}%
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs text-muted mb-0.5">Market %</div>
+                          <div className="text-sm font-bold text-white">
+                            {leg.implied_probability ? (leg.implied_probability * 100).toFixed(0) : '--'}%
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Factors */}
+                    {leg.factors && leg.factors.length > 0 && (
+                      <div className="space-y-1.5 pt-3 border-t border-slate-700/50">
+                        {leg.factors.map((f: any, j: number) => (
+                          <div key={j} className="flex items-start gap-2 text-sm">
+                            <span className="mt-0.5 flex-shrink-0">
+                              {f.type === 'positive'
+                                ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                : f.type === 'negative'
+                                ? <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                : <Info className="w-3.5 h-3.5 text-blue-400" />}
+                            </span>
+                            <span className={`text-xs ${
+                              f.type === 'positive' ? 'text-emerald-300' :
+                              f.type === 'negative' ? 'text-amber-300' : 'text-gray-400'
+                            }`}>
+                              {f.description}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
 
-                  {/* Advanced Metrics */}
-                  {leg.expected_value !== undefined && (
-                    <div className="grid grid-cols-2 gap-3 mt-3 p-3 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/30">
-                      <div>
-                        <div className="text-xs text-muted mb-1">Expected Value</div>
-                        <div className={`text-lg font-bold ${leg.expected_value >= 3 ? 'text-emerald-400' : leg.expected_value >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                          {leg.expected_value >= 0 ? '+' : ''}{leg.expected_value.toFixed(1)}%
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted mb-1">Recommended Units</div>
-                        <div className="text-lg font-bold text-white">
-                          {leg.kelly_units !== undefined ? leg.kelly_units.toFixed(1) : '0.0'}U
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted mb-1">Bet Grade</div>
-                        <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-sm ${
-                          leg.bet_grade === 'S' ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-slate-900' :
-                          leg.bet_grade === 'A' ? 'bg-gradient-to-br from-emerald-400 to-green-500 text-white' :
-                          leg.bet_grade === 'B' ? 'bg-gradient-to-br from-blue-400 to-cyan-500 text-white' :
-                          leg.bet_grade === 'C' ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white' :
-                          'bg-gradient-to-br from-gray-600 to-gray-700 text-white'
-                        }`}>
-                          {leg.bet_grade || 'D'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted mb-1">True vs Market</div>
-                        <div className="text-xs text-white">
-                          {leg.true_probability !== undefined && leg.implied_probability !== undefined ? (
-                            <>
-                              {(leg.true_probability * 100).toFixed(1)}% vs {(leg.implied_probability * 100).toFixed(1)}%
-                            </>
-                          ) : (
-                            'N/A'
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Factors */}
-                  {leg.factors && leg.factors.length > 0 && (
-                    <div className="space-y-2 mt-4 pt-4 border-t border-slate-700/50">
-                      {leg.factors.map((factor: any, j: number) => (
-                        <div key={j} className="flex items-start gap-2 text-sm">
-                          <span className="mt-0.5">
-                            {factor.type === 'positive' ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            ) : factor.type === 'negative' ? (
-                              <AlertTriangle className="w-4 h-4 text-amber-400" />
-                            ) : (
-                              <Info className="w-4 h-4 text-blue-400" />
-                            )}
-                          </span>
-                          <span className={
-                            factor.type === 'positive' ? 'text-emerald-400' :
-                            factor.type === 'negative' ? 'text-amber-400' :
-                            'text-muted'
-                          }>
-                            {factor.description}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* DraftKings Button */}
-                  {leg.dk_link && (
-                    <div className="mt-4">
-                      <a
-                        href={leg.dk_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold transition-all shadow-lg"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        View on DraftKings
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Save Section */}
+              {/* Save section */}
               <div className="card-glass">
                 <h3 className="heading-sm mb-4">Save to Portfolio</h3>
-                <div className="flex items-center gap-4">
+                <div className="flex items-end gap-4">
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-secondary mb-2">Stake ($)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={stake}
-                      onChange={(e) => setStake(parseFloat(e.target.value))}
-                      className="input"
-                    />
+                    <input type="number" min="1" step="1" value={stake}
+                      onChange={e => setStake(parseFloat(e.target.value))} className="input" />
                   </div>
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-secondary mb-2">To Win</label>
                     <div className="px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 font-bold">
-                      ${(stake * (parlay.meta.parlay_odds > 0 ? parlay.meta.parlay_odds / 100 : Math.abs(100 / parlay.meta.parlay_odds))).toFixed(2)}
+                      ${(stake * (parlay.meta.parlay_odds > 0
+                        ? parlay.meta.parlay_odds / 100
+                        : Math.abs(100 / parlay.meta.parlay_odds))).toFixed(2)}
                     </div>
                   </div>
+                  <button onClick={handleSave} className="btn-primary flex items-center gap-2 h-[50px] px-6">
+                    <Save className="w-4 h-4" />
+                    Save
+                  </button>
                 </div>
-                <button onClick={handleSave} className="w-full btn-primary mt-4 flex items-center justify-center gap-2">
-                  <Save className="w-5 h-5" />
-                  Save Parlay
-                </button>
               </div>
             </div>
           )}
 
           {!parlay && !generating && !error && (
-            <div className="card-glass text-center py-16">
-              <Dices className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+            <div className="card-glass text-center py-20">
+              <Sparkles className="w-16 h-16 text-gray-600 mx-auto mb-4" />
               <h3 className="heading-sm mb-2">Ready to Generate</h3>
-              <p className="text-muted">Configure your preferences and click "Find Sharp Plays"</p>
+              <p className="text-muted text-sm">Pick a preset or configure manually, then hit Generate.</p>
+              <p className="text-muted text-xs mt-2">KenPom efficiency data updates daily at 6 AM UTC.</p>
             </div>
           )}
         </div>

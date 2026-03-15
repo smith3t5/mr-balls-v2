@@ -1,179 +1,149 @@
+/**
+ * app/api/bets/route.ts
+ * Save a new bet to D1 and fetch bets for a user.
+ */
 import { getRequestContext } from '@cloudflare/next-on-pages';
-// List user bets or create new bet
 import { NextRequest, NextResponse } from 'next/server';
-import { Database } from '@/lib/db';
 
 export const runtime = 'edge';
 
-// GET /api/bets - List user's bets
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const sessionId = request.cookies.get('session_id')?.value;
-    if (!sessionId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { env } = getRequestContext();
-    const db = new Database(env.DB as D1Database);
+    const db = (env as any).DB as D1Database;
+    const body = await request.json();
+    const { username, bet } = body;
 
-    const session = await db.db
-      .prepare('SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?')
-      .bind(sessionId, Date.now())
-      .first();
-
-    if (!session) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    if (!username || !bet) {
+      return NextResponse.json({ error: 'username and bet required' }, { status: 400 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || undefined;
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const betId = crypto.randomUUID();
+    const now   = Date.now();
 
-    const bets = await db.getUserBets(session.user_id as string, {
-      status,
-      limit,
-      offset,
-    });
+    // Upsert user row (creates if not exists)
+    await db.prepare(`
+      INSERT INTO users (id, username, nfc_tag_id, created_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(username) DO NOTHING
+    `).bind(crypto.randomUUID(), username, `local_${username}`, now).run();
 
-    return NextResponse.json({
-      success: true,
-      bets,
-      pagination: {
-        limit,
-        offset,
-        total: bets.length,
-      },
-    });
-  } catch (error: any) {
-    console.error('Get bets error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch bets' },
-      { status: 500 }
+    // Get user id
+    const userRow = await db.prepare('SELECT id FROM users WHERE username = ?')
+      .bind(username).first<{ id: string }>();
+    if (!userRow) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+    const parlayOdds = bet.meta.parlay_odds;
+    const potentialReturn = bet.stake + (parlayOdds > 0
+      ? bet.stake * (parlayOdds / 100)
+      : bet.stake * (100 / Math.abs(parlayOdds)));
+
+    // Insert bet
+    await db.prepare(`
+      INSERT INTO bets (id, user_id, created_at, status, stake, odds, potential_return, confidence, avg_edge)
+      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+    `).bind(
+      betId, userRow.id, now,
+      bet.stake, parlayOdds, potentialReturn,
+      bet.meta.total_confidence ?? null,
+      bet.meta.avg_edge ?? null,
+    ).run();
+
+    // Insert legs
+    const legStmts = bet.legs.map((leg: any) =>
+      db.prepare(`
+        INSERT INTO bet_legs (
+          id, bet_id, sport, event_id, event_name, commence_time,
+          market, pick, odds, status, participant, point,
+          bet_kind, bet_tag, dk_link,
+          edge, expected_value, kelly_fraction, kelly_units,
+          true_probability, implied_probability, bet_grade, locked_by_user
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        crypto.randomUUID(), betId,
+        leg.sport, leg.event_id ?? null, leg.event_name, leg.commence_time,
+        leg.market, leg.pick, leg.odds,
+        leg.participant ?? null, leg.point ?? null,
+        leg.bet_kind ?? null, leg.bet_tag ?? null, leg.dk_link ?? null,
+        leg.edge ?? null, leg.expected_value ?? null,
+        leg.kelly_fraction ?? null, leg.kelly_units ?? null,
+        leg.true_probability ?? null, leg.implied_probability ?? null,
+        leg.bet_grade ?? null, leg.locked_by_user ? 1 : 0,
+      )
     );
+
+    await db.batch(legStmts);
+
+    // Update user stats
+    await db.prepare(`
+      UPDATE users SET total_bets = total_bets + 1 WHERE id = ?
+    `).bind(userRow.id).run();
+
+    return NextResponse.json({ success: true, betId });
+  } catch (err: any) {
+    console.error('Save bet error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// POST /api/bets - Create new bet
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const sessionId = request.cookies.get('session_id')?.value;
-    if (!sessionId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { env } = getRequestContext();
-    const db = new Database(env.DB as D1Database);
+    const db      = (env as any).DB as D1Database;
+    const url     = new URL(request.url);
+    const username = url.searchParams.get('username');
 
-    const session = await db.db
-      .prepare('SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?')
-      .bind(sessionId, Date.now())
-      .first();
-
-    if (!session) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    if (!username) {
+      return NextResponse.json({ error: 'username required' }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { legs, stake, notes } = body;
+    const userRow = await db.prepare('SELECT id, wins, losses, units_profit FROM users WHERE username = ?')
+      .bind(username).first<{ id: string; wins: number; losses: number; units_profit: number }>();
 
-    if (!legs || legs.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one leg required' },
-        { status: 400 }
-      );
+    if (!userRow) {
+      return NextResponse.json({ bets: [], stats: null });
     }
 
-    if (!stake || stake <= 0) {
-      return NextResponse.json(
-        { error: 'Valid stake required' },
-        { status: 400 }
-      );
-    }
+    const bets = await db.prepare(`
+      SELECT b.id, b.created_at, b.status, b.stake, b.odds,
+             b.potential_return, b.actual_return, b.confidence, b.avg_edge
+      FROM   bets b
+      WHERE  b.user_id = ?
+      ORDER  BY b.created_at DESC
+      LIMIT  50
+    `).bind(userRow.id).all();
 
-    // Calculate parlay odds
-    const parlayOdds = calculateParlayOdds(legs.map((l: any) => l.odds));
-    const parlayDecimal =
-      parlayOdds > 0 ? 1 + parlayOdds / 100 : 1 + 100 / Math.abs(parlayOdds);
-    const potentialReturn = stake * parlayDecimal;
+    // Fetch legs for each bet
+    const betIds = bets.results.map((b: any) => b.id);
+    const legsMap: Record<string, any[]> = {};
 
-    // Calculate analytics
-    const avgEdge = legs.reduce((sum: number, l: any) => sum + (l.edge || 0), 0) / legs.length;
-    const confidence = legs.reduce((sum: number, l: any) => sum + (l.confidence || 5), 0) / legs.length;
+    if (betIds.length > 0) {
+      const placeholders = betIds.map(() => '?').join(',');
+      const legs = await db.prepare(`
+        SELECT * FROM bet_legs WHERE bet_id IN (${placeholders}) ORDER BY bet_id
+      `).bind(...betIds).all();
 
-    // Create bet
-    const betId = crypto.randomUUID();
-    await db.createBet({
-      id: betId,
-      user_id: session.user_id as string,
-      stake,
-      odds: parlayOdds,
-      potential_return: potentialReturn,
-      confidence,
-      notes: notes || null,
-      avg_edge: avgEdge,
-    });
-
-    // Create legs
-    for (const leg of legs) {
-      try {
-        await db.createBetLeg({
-          id: crypto.randomUUID(),
-          bet_id: betId,
-          sport: leg.sport,
-          event_id: leg.event_id,
-          event_name: leg.event_name,
-          commence_time: leg.commence_time,
-          market: leg.market,
-          pick: leg.pick,
-          odds: leg.odds,
-          participant: leg.participant,
-          point: leg.point,
-          bet_kind: leg.bet_kind,
-          bet_tag: leg.bet_tag,
-          dk_link: leg.dk_link,
-          edge: leg.edge,
-          locked_by_user: leg.locked_by_user || false,
-        });
-      } catch (legError: any) {
-        console.error('Failed to create leg:', legError);
-        console.error('Leg data:', JSON.stringify(leg));
-        throw new Error(`Failed to create leg: ${legError.message}`);
+      for (const leg of legs.results) {
+        const l = leg as any;
+        if (!legsMap[l.bet_id]) legsMap[l.bet_id] = [];
+        legsMap[l.bet_id].push(l);
       }
     }
 
-    // Update user stats
-    const user = await db.getUserById(session.user_id as string);
-    if (user) {
-      await db.updateUserStats(user.id, {
-        total_bets: user.stats.total_bets + 1,
-        units_wagered: user.stats.units_wagered + stake / user.preferences.default_unit_size,
-      });
-    }
+    const enrichedBets = bets.results.map((b: any) => ({
+      ...b,
+      legs: legsMap[b.id] ?? [],
+    }));
 
     return NextResponse.json({
-      success: true,
-      bet_id: betId,
+      bets: enrichedBets,
+      stats: {
+        wins:         userRow.wins,
+        losses:       userRow.losses,
+        units_profit: userRow.units_profit,
+      },
     });
-  } catch (error: any) {
-    console.error('Create bet error:', error);
-    return NextResponse.json(
-      { error: 'Failed to create bet' },
-      { status: 500 }
-    );
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-}
-
-function calculateParlayOdds(americanOdds: number[]): number {
-  const decimalOdds = americanOdds.map((odds) => {
-    if (odds > 0) return 1 + odds / 100;
-    return 1 + 100 / Math.abs(odds);
-  });
-
-  const parlayDecimal = decimalOdds.reduce((acc, odds) => acc * odds, 1);
-
-  if (parlayDecimal >= 2) {
-    return Math.round((parlayDecimal - 1) * 100);
-  }
-  return -Math.round(100 / (parlayDecimal - 1));
 }
