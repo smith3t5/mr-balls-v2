@@ -1,96 +1,83 @@
 /**
  * app/api/cron-kenpom/route.ts
+ * Compatible with @cloudflare/next-on-pages v1.13.16
  *
- * Diagnostic version — surfaces the actual error instead of a generic 500.
- * Replace with the clean version once we know what's failing.
+ * Note: getRequestContext has broken type declarations in this version.
+ * The @ts-ignore comments suppress the TS error — it works correctly at runtime.
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { syncKenPomData, getLastSyncTime } from '@/lib/kenpom-sync';
 
 export const runtime = 'edge';
 
+function checkAuth(request: NextRequest, cronSecret: string): boolean {
+  const auth  = request.headers.get('Authorization') ?? '';
+  const token = auth.replace('Bearer ', '').trim();
+  return token.length > 0 && token === cronSecret;
+}
+
 export async function POST(request: NextRequest) {
-  try {
-    // Step 1: Check auth header is present
-    const auth = request.headers.get('Authorization');
-    if (!auth) {
-      return NextResponse.json({ error: 'No Authorization header' }, { status: 401 });
-    }
+  // @ts-ignore — type declarations broken in next-on-pages 1.13.x, works at runtime
+  const { getRequestContext } = await import('@cloudflare/next-on-pages');
+  const { env } = getRequestContext();
 
-    // Step 2: Try to get Cloudflare context
-    let cfEnv: any;
-    try {
-      const { getCloudflareContext } = await import('@cloudflare/next-on-pages');
-      const cf = getCloudflareContext();
-      cfEnv = cf.env;
-    } catch (e) {
-      return NextResponse.json({
-        error: 'getCloudflareContext failed',
-        detail: String(e),
-        step: 'cloudflare_context',
-      }, { status: 500 });
-    }
-
-    // Step 3: Check what bindings/secrets are available (don't log values)
-    const available = {
-      DB:               !!cfEnv?.DB,
-      CRON_SECRET:      !!cfEnv?.CRON_SECRET,
-      KENPOM_EMAIL:     !!cfEnv?.KENPOM_EMAIL,
-      KENPOM_PASSWORD:  !!cfEnv?.KENPOM_PASSWORD,
-    };
-
-    // Step 4: Auth check
-    const token = auth.replace('Bearer ', '').trim();
-    if (!cfEnv?.CRON_SECRET || token !== cfEnv.CRON_SECRET) {
-      return NextResponse.json({
-        error: 'Unauthorized',
-        bindings_available: available,
-      }, { status: 401 });
-    }
-
-    // Step 5: Try importing the sync module
-    let syncKenPomData: any;
-    try {
-      const mod = await import('@/lib/kenpom-sync');
-      syncKenPomData = mod.syncKenPomData;
-    } catch (e) {
-      return NextResponse.json({
-        error: 'Failed to import kenpom-sync',
-        detail: String(e),
-        step: 'module_import',
-        bindings_available: available,
-      }, { status: 500 });
-    }
-
-    // Step 6: Run the sync
-    try {
-      const result = await syncKenPomData(
-        cfEnv.DB,
-        cfEnv.KENPOM_EMAIL,
-        cfEnv.KENPOM_PASSWORD
-      );
-      return NextResponse.json({ ...result, bindings_available: available });
-    } catch (e) {
-      return NextResponse.json({
-        error: 'syncKenPomData threw an error',
-        detail: String(e),
-        step: 'sync_execution',
-        bindings_available: available,
-      }, { status: 500 });
-    }
-
-  } catch (err) {
-    return NextResponse.json({
-      error: 'Unhandled exception',
-      detail: String(err),
-      step: 'outer_catch',
-    }, { status: 500 });
+  if (!checkAuth(request, (env as any).CRON_SECRET ?? '')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  if (!(env as any).KENPOM_EMAIL || !(env as any).KENPOM_PASSWORD) {
+    return NextResponse.json(
+      { error: 'KENPOM_EMAIL or KENPOM_PASSWORD not configured' },
+      { status: 500 }
+    );
+  }
+
+  if (!(env as any).DB) {
+    return NextResponse.json(
+      { error: 'D1 binding DB not found — check Cloudflare Pages bindings' },
+      { status: 500 }
+    );
+  }
+
+  const result = await syncKenPomData(
+    (env as any).DB,
+    (env as any).KENPOM_EMAIL,
+    (env as any).KENPOM_PASSWORD
+  );
+
+  return NextResponse.json(result, { status: result.success ? 200 : 500 });
 }
 
 export async function GET(request: NextRequest) {
+  // @ts-ignore — type declarations broken in next-on-pages 1.13.x, works at runtime
+  const { getRequestContext } = await import('@cloudflare/next-on-pages');
+  const { env } = getRequestContext();
+
+  if (!checkAuth(request, (env as any).CRON_SECRET ?? '')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const db = (env as any).DB as D1Database;
+
+  const lastSync  = await getLastSyncTime(db);
+  const teamCount = await db.prepare(
+    'SELECT COUNT(*) as cnt FROM kenpom_data'
+  ).first<{ cnt: number }>();
+
+  const recentLogs = await db.prepare(`
+    SELECT ran_at, teams_synced, status, error_message, duration_ms
+    FROM   kenpom_sync_log
+    ORDER  BY ran_at DESC
+    LIMIT  5
+  `).all();
+
   return NextResponse.json({
-    message: 'cron-kenpom diagnostic endpoint is live',
-    method: 'POST to trigger sync',
+    lastSync:   lastSync?.toISOString() ?? null,
+    teamCount:  teamCount?.cnt ?? 0,
+    staleness:  lastSync
+      ? `${Math.round((Date.now() - lastSync.getTime()) / (1000 * 60 * 60))}h ago`
+      : 'never synced',
+    recentRuns: recentLogs.results,
   });
 }
