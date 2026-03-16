@@ -323,29 +323,51 @@ function analyzeKenPomSpread(
   // Book spread: stored as bet.point from the perspective of the picked team
   //   e.g. "Kansas -4.5" → point = -4.5, bettingOnHome depends on which team
 
-  // Book's implied spread from home team's perspective
-  const bookSpreadFromHome = bettingOnHome ? bet.point : -bet.point;
+  // Book line from HOME team's perspective (negative = home giving points)
+  // bet.point is always from the PICKED team's perspective:
+  //   Duke -28.5 → bet.point = -28.5, bettingOnHome = true
+  //   Siena +28.5 → bet.point = +28.5, bettingOnHome = false
+  // To get book line from home perspective:
+  //   If betting home: home line = bet.point (e.g. -28.5)
+  //   If betting away: home line = -bet.point (e.g. -(-28.5) = -28.5... wait)
+  // Both cases: home line = bettingOnHome ? bet.point : -bet.point
+  // But bet.point for away team +28.5 means away gets +28.5, so home line = -28.5
+  const bookLineFromHome = bettingOnHome ? bet.point! : -(bet.point!);
 
-  // Gap: KenPom projection vs book line (from home team perspective)
-  const spreadGap = projection.projectedSpread - bookSpreadFromHome;
+  // KenPom projected spread is from home perspective (positive = home wins)
+  // Gap > 0: KenPom projects home winning by MORE than book implies → home underpriced
+  // Gap < 0: KenPom projects home winning by LESS than book implies → home overpriced
+  const spreadGap = projection.projectedSpread - bookLineFromHome;
 
-  // Positive gap means KenPom thinks home team is better than the line implies
-  // If betting on home team → this is favorable. If away team → unfavorable.
+  // Edge for the BETTOR:
+  // If betting home and gap > 0 → home underpriced → positive edge
+  // If betting home and gap < 0 → home overpriced → negative edge (take the dog)
+  // If betting away and gap < 0 → home overpriced = away underpriced → positive edge
+  // If betting away and gap > 0 → home underpriced = away overpriced → negative edge
   const effectiveGap = bettingOnHome ? spreadGap : -spreadGap;
 
   if (Math.abs(effectiveGap) < 1.5) return null; // below signal threshold
 
   const pickedTeam    = bettingOnHome ? game.home_team : game.away_team;
+  const oppositeTeam  = bettingOnHome ? game.away_team : game.home_team;
   const kpFavoredTeam = projection.projectedSpread > 0 ? game.home_team : game.away_team;
   const kpMargin      = Math.abs(projection.projectedSpread).toFixed(1);
   const bookMargin    = Math.abs(bet.point!).toFixed(1);
   const gapStr        = Math.abs(effectiveGap).toFixed(1);
 
+  // effectiveGap > 0: KenPom supports picked team covering
+  // effectiveGap < 0: KenPom opposes picked team covering
   const spreadDesc = effectiveGap >= 1.5
     ? kpFavoredTeam === pickedTeam
-      ? `KenPom projects ${pickedTeam} winning by ${kpMargin} pts — taking them at ${bookMargin} gives ${gapStr} pts of model value`
-      : `KenPom projects a ${kpMargin}-pt margin — book's ${bookMargin}-pt line gives ${pickedTeam} ${gapStr} pts of spread cushion vs the model`
-    : `KenPom projects ${kpFavoredTeam} winning by ${kpMargin} pts — this pick on ${pickedTeam} goes against the model by ${gapStr} pts`;
+      // Betting the favorite: KenPom thinks they win by more than the line
+      ? `KenPom projects ${pickedTeam} winning by ${kpMargin} pts — book's ${bookMargin}-pt line underestimates them by ${gapStr} pts`
+      // Betting the underdog: KenPom projects a closer game than the line implies
+      : `KenPom projects a ${kpMargin}-pt game — ${pickedTeam} getting ${bookMargin} pts is ${gapStr} pts better than the model's fair line`
+    : kpFavoredTeam === pickedTeam
+      // Favorite but model doesn't support the spread size
+      ? `KenPom projects ${pickedTeam} winning by only ${kpMargin} pts — laying ${bookMargin} requires overperforming the model by ${gapStr} pts`
+      // Betting an underdog the model thinks will lose by more than the line
+      : `KenPom projects ${oppositeTeam} winning by ${kpMargin} pts — ${pickedTeam} covering ${bookMargin} goes against the model by ${gapStr} pts`;
 
   return {
     type: effectiveGap >= 1.5 ? 'positive' : 'negative',
@@ -984,6 +1006,7 @@ export class AnalyticsEngine {
     const kelly         = kellyBetSize(
       trueProbability, bet.odds!, this.kellyMultiplier, 0.01, 0.05
     );
+    // Units: 1 unit = $5 (on $100 bankroll). kelly.fraction * 100 = $ amount.
 
     const hasKenPom     = isNCAA && (homeKP !== null || awayKP !== null) &&
                           factors.some((f) => f.category === 'matchup');

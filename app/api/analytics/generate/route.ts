@@ -143,11 +143,58 @@ function normalizeGameNames(games: GameData[]): GameData[] {
 // Route handler
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Tournament & venue helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive tournament name from game sport + description metadata.
+ * The Odds API doesn't always return tournament context, so we infer
+ * from sport key and group/competition fields when available.
+ */
+function deriveTournament(game: GameData | undefined): string {
+  if (!game) return '';
+  if (game.sport === 'basketball_ncaab') {
+    // March is tournament month — NCAA Tournament runs mid-March through April
+    const date = new Date(game.commence_time);
+    const month = date.getMonth(); // 0-indexed: 2 = March, 3 = April
+    const day   = date.getDate();
+    if (month === 2 && day >= 14) return 'NCAA Tournament';
+    if (month === 3 && day <= 7)  return 'NCAA Tournament';
+    if (month === 2 && day >= 12) return 'NIT / CBI / CIT';
+    return 'NCAAB';
+  }
+  if (game.sport === 'americanfootball_nfl') return 'NFL';
+  if (game.sport === 'basketball_nba')       return 'NBA';
+  if (game.sport === 'icehockey_nhl')        return 'NHL';
+  if (game.sport === 'baseball_mlb')         return 'MLB';
+  return game.sport;
+}
+
+/**
+ * Derive venue context. NCAA Tournament games are played at neutral sites.
+ * Regular season NCAAB uses the home team's arena.
+ */
+function deriveVenue(game: GameData | undefined): string {
+  if (!game) return '';
+  if (game.sport === 'basketball_ncaab') {
+    const date  = new Date(game.commence_time);
+    const month = date.getMonth();
+    const day   = date.getDate();
+    // NCAA Tournament = neutral site
+    if ((month === 2 && day >= 14) || (month === 3 && day <= 7)) {
+      return 'Neutral Site';
+    }
+    return `${game.home_team} (Home)`;
+  }
+  return '';
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { env } = getRequestContext();
     const kellyMultiplier = 0.25;
-    const bankroll        = 1000;
+    const bankroll        = 100;  // $100 baseline, $5 unit (5% kelly max)
     const userStateCode   = undefined as string | undefined;
 
     const criteria: GeneratorCriteria = await request.json();
@@ -255,6 +302,9 @@ export async function POST(request: NextRequest) {
       event_id:            leg.event_id,
       event_name:          leg.event_name,
       commence_time:       leg.commence_time,
+      // Tournament/venue context derived from game data
+      tournament:          deriveTournament(leg.rawData?.game),
+      venue:               deriveVenue(leg.rawData?.game),
       market:              leg.market,
       pick:                leg.pick,
       odds:                leg.odds,
