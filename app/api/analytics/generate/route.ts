@@ -172,18 +172,64 @@ function deriveTournament(game: GameData | undefined): string {
 }
 
 /**
- * Derive venue context. NCAA Tournament games are played at neutral sites.
- * Regular season NCAAB uses the home team's arena.
+ * Derive venue context using real 2026 bracket site assignments.
+ * Falls back to generic "Neutral Site" for tournament games not in the map.
  */
+const TEAM_VENUE_CITIES_2026: Record<string, string> = {
+  // First Four
+  'UMBC': 'Dayton, OH', 'Howard': 'Dayton, OH', 'Texas': 'Dayton, OH',
+  'NC State': 'Dayton, OH', 'Prairie View': 'Dayton, OH', 'Lehigh': 'Dayton, OH',
+  'Miami OH': 'Dayton, OH', 'SMU': 'Dayton, OH',
+  // Buffalo
+  'Ohio State': 'Buffalo, NY', 'TCU': 'Buffalo, NY', 'Wisconsin': 'Buffalo, NY',
+  'High Point': 'Buffalo, NY', 'Duke': 'Buffalo, NY', 'Siena': 'Buffalo, NY',
+  'Michigan': 'Buffalo, NY', 'BYU': 'Buffalo, NY',
+  // Greenville
+  'Louisville': 'Greenville, SC', 'South Florida': 'Greenville, SC',
+  'Vanderbilt': 'Greenville, SC', 'McNeese': 'Greenville, SC',
+  'North Carolina': 'Greenville, SC', 'VCU': 'Greenville, SC',
+  'Georgia': 'Greenville, SC', 'Saint Louis': 'Greenville, SC',
+  // Oklahoma City
+  'Nebraska': 'Oklahoma City, OK', 'Troy': 'Oklahoma City, OK',
+  'Arkansas': 'Oklahoma City, OK', "Hawai'i": 'Oklahoma City, OK',
+  'Michigan State': 'Oklahoma City, OK', 'North Dakota State': 'Oklahoma City, OK',
+  'Illinois': 'Oklahoma City, OK', 'Penn': 'Oklahoma City, OK',
+  // Portland
+  "Saint Mary's": 'Portland, OR', 'Texas A&M': 'Portland, OR',
+  'Gonzaga': 'Portland, OR', 'Kennesaw State': 'Portland, OR',
+  'Houston': 'Portland, OR', 'Idaho': 'Portland, OR',
+  // Tampa
+  'Kentucky': 'Tampa, FL', 'Santa Clara': 'Tampa, FL',
+  'Iowa State': 'Tampa, FL', 'Tennessee State': 'Tampa, FL',
+  'Clemson': 'Tampa, FL', 'Iowa': 'Tampa, FL',
+  'Florida': 'Tampa, FL', 'Miami FL': 'Tampa, FL', 'Missouri': 'Tampa, FL',
+  // Philadelphia
+  'Texas Tech': 'Philadelphia, PA', 'Akron': 'Philadelphia, PA',
+  'Alabama': 'Philadelphia, PA', 'Hofstra': 'Philadelphia, PA',
+  'Villanova': 'Philadelphia, PA', 'Utah State': 'Philadelphia, PA',
+  "St. John's": 'Philadelphia, PA', 'UNI': 'Philadelphia, PA',
+  'Purdue': 'Philadelphia, PA', 'Queens': 'Philadelphia, PA',
+  // San Diego
+  'Arizona': 'San Diego, CA', 'Long Island University': 'San Diego, CA',
+  'Tennessee': 'San Diego, CA', 'UCLA': 'San Diego, CA',
+  'UCF': 'San Diego, CA', 'UConn': 'San Diego, CA', 'Furman': 'San Diego, CA',
+  // St. Louis
+  'Virginia': 'St. Louis, MO', 'Wright State': 'St. Louis, MO',
+  'Kansas': 'St. Louis, MO', 'Cal Baptist': 'St. Louis, MO',
+};
+
 function deriveVenue(game: GameData | undefined): string {
   if (!game) return '';
   if (game.sport === 'basketball_ncaab') {
     const date  = new Date(game.commence_time);
     const month = date.getMonth();
     const day   = date.getDate();
-    // NCAA Tournament = neutral site
     if ((month === 2 && day >= 14) || (month === 3 && day <= 7)) {
-      return 'Neutral Site';
+      // Look up actual venue city for this team
+      const city = TEAM_VENUE_CITIES_2026[game.home_team]
+                ?? TEAM_VENUE_CITIES_2026[game.away_team]
+                ?? 'Neutral Site';
+      return city;
     }
     return `${game.home_team} (Home)`;
   }

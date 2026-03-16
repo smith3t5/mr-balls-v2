@@ -60,6 +60,235 @@ export type { KenPomEntry } from './kenpom-sync';
 // Home court advantage in NCAAB (points)
 const HOME_COURT_ADVANTAGE = 3.1;
 
+// ---------------------------------------------------------------------------
+// NCAA Tournament neutral site detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if this game should be treated as a neutral site.
+ * NCAA Tournament runs mid-March through early April.
+ * NIT and other post-season tournaments are also neutral after early rounds.
+ */
+function isNeutralSiteGame(game: GameData): boolean {
+  if (game.sport !== 'basketball_ncaab') return false;
+  const date  = new Date(game.commence_time);
+  const month = date.getMonth(); // 0-indexed
+  const day   = date.getDate();
+  // NCAA Tournament window: March 14 – April 7
+  if (month === 2 && day >= 14) return true;  // mid-March onward
+  if (month === 3 && day <= 7)  return true;  // through first week of April
+  return false;
+}
+
+/**
+ * Proximity adjustment: if a team is playing within ~150 miles of campus
+ * during the tournament, apply a partial home court factor (1.5 pts).
+ * This is a rough heuristic — the Odds API doesn't expose venue location,
+ * so we use known first/second round host cities for 2025.
+ *
+ * Key: team name (KenPom format) → [latDeg, lngDeg]
+ * Venue cities for 2026 tournament added as they're announced.
+ */
+const TEAM_LOCATIONS: Record<string, [number, number]> = {
+  // Example known locations — expand as needed
+  'Duke':              [36.00, -78.94],
+  'North Carolina':    [35.91, -79.05],
+  'NC State':          [35.79, -78.68],
+  'Kentucky':          [38.03, -84.50],
+  'Louisville':        [38.25, -85.76],
+  'Indiana':           [39.17, -86.52],
+  'Purdue':            [40.42, -86.88],
+  'Ohio State':        [40.00, -83.02],
+  'Michigan State':    [42.70, -84.48],
+  'Michigan':          [42.28, -83.74],
+  'Wisconsin':         [43.07, -89.40],
+  'Illinois':          [40.11, -88.23],
+  'Iowa':              [41.66, -91.53],
+  'Kansas':            [38.96, -95.25],
+  'Kansas State':      [39.18, -96.58],
+  'Baylor':            [31.55, -97.11],
+  'Texas':             [30.28, -97.73],
+  'Texas Tech':        [33.59, -101.88],
+  'Oklahoma':          [35.21, -97.44],
+  'Gonzaga':           [47.67, -117.40],
+  'UCLA':              [34.07, -118.44],
+  'Arizona':           [32.23, -110.95],
+  'Oregon':            [44.05, -123.07],
+  'Tennessee':         [35.96, -83.92],
+  'Auburn':            [32.61, -85.49],
+  'Alabama':           [33.21, -87.54],
+  'Florida':           [29.65, -82.34],
+  'LSU':               [30.41, -91.18],
+  'Arkansas':          [36.07, -94.17],
+  'Mississippi State': [33.45, -88.79],
+  'Vanderbilt':        [36.14, -86.80],
+  'UConn':             [41.81, -72.25],
+  'Villanova':         [40.04, -75.34],
+  'Seton Hall':        [40.74, -74.24],
+  'Georgetown':        [38.91, -77.07],
+  'Marquette':         [43.04, -87.93],
+  'Creighton':         [41.26, -96.00],
+  'St. John's':       [40.72, -73.79],
+  'Providence':        [41.82, -71.41],
+  'Xavier':            [39.15, -84.47],
+  'Cincinnati':        [39.13, -84.51],
+  'Houston':           [29.72, -95.34],
+  'Memphis':           [35.12, -89.97],
+  'Wichita State':     [37.72, -97.29],
+  'UCF':               [28.60, -81.20],
+  'South Florida':     [28.07, -82.41],
+  'Duke':              [36.00, -78.94],
+};
+
+function haversineDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R    = 3958.8; // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a    = Math.sin(dLat/2)**2 +
+               Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+/**
+ * 2026 NCAA Tournament — team-to-venue mapping based on official bracket.
+ *
+ * Sites:
+ *   First Four (Tue/Wed Mar 17-18): Dayton OH — UD Arena
+ *   Thu/Fri Mar 19: Buffalo NY, Greenville SC, Oklahoma City OK, Portland OR
+ *   Thu/Fri Mar 20: Tampa FL, Philadelphia PA, San Diego CA, St. Louis MO
+ *   Regionals Mar 26-29: Houston, San Jose, Chicago, Washington DC
+ *   Final Four Apr 4-6: Indianapolis
+ */
+const TEAM_VENUE_2026: Record<string, { city: string; lat: number; lng: number }> = {
+  // ── FIRST FOUR — Dayton OH ──────────────────────────────────────────────
+  'UMBC':              { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'Howard':            { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'Texas':             { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'NC State':          { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'Prairie View':      { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'Lehigh':            { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'Miami OH':          { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+  'SMU':               { city: 'Dayton OH',        lat: 39.76, lng: -84.19 },
+
+  // ── THURSDAY MARCH 19 — Buffalo NY (KeyBank Center) ────────────────────
+  'Ohio State':        { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'TCU':               { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'Wisconsin':         { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'High Point':        { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'Duke':              { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'Siena':             { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'Michigan':          { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+  'BYU':               { city: 'Buffalo NY',       lat: 42.88, lng: -78.88 },
+
+  // ── THURSDAY MARCH 19 — Greenville SC (Bon Secours Arena) ──────────────
+  'Louisville':        { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'South Florida':     { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'Vanderbilt':        { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'McNeese':           { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'North Carolina':    { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'VCU':               { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'Georgia':           { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+  'Saint Louis':       { city: 'Greenville SC',    lat: 34.85, lng: -82.40 },
+
+  // ── THURSDAY MARCH 19 — Oklahoma City OK (Paycom Center) ───────────────
+  'Nebraska':          { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  'Troy':              { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  'Arkansas':          { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  "Hawai'i":           { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  'Michigan State':    { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  'North Dakota State':{ city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  'Illinois':          { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+  'Penn':              { city: 'Oklahoma City OK', lat: 35.46, lng: -97.52 },
+
+  // ── THURSDAY MARCH 19 — Portland OR (Moda Center) ──────────────────────
+  "Saint Mary's":      { city: 'Portland OR',      lat: 45.53, lng: -122.67 },
+  'Texas A&M':         { city: 'Portland OR',      lat: 45.53, lng: -122.67 },
+  'Gonzaga':           { city: 'Portland OR',      lat: 45.53, lng: -122.67 },
+  'Kennesaw State':    { city: 'Portland OR',      lat: 45.53, lng: -122.67 },
+  'Houston':           { city: 'Portland OR',      lat: 45.53, lng: -122.67 },
+  'Idaho':             { city: 'Portland OR',      lat: 45.53, lng: -122.67 },
+
+  // ── FRIDAY MARCH 20 — Tampa FL (Amalie Arena) ──────────────────────────
+  'Kentucky':          { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Santa Clara':       { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Iowa State':        { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Tennessee State':   { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Clemson':           { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Iowa':              { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Florida':           { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Miami FL':          { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+  'Missouri':          { city: 'Tampa FL',         lat: 27.94, lng: -82.45 },
+
+  // ── FRIDAY MARCH 20 — Philadelphia PA (Xfinity Mobile Arena) ──────────
+  'Texas Tech':        { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Akron':             { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Alabama':           { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Hofstra':           { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Villanova':         { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Utah State':        { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  "St. John's":        { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'UNI':               { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Purdue':            { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+  'Queens':            { city: 'Philadelphia PA',  lat: 39.95, lng: -75.16 },
+
+  // ── FRIDAY MARCH 20 — San Diego CA (Viejas Arena) ──────────────────────
+  'Arizona':           { city: 'San Diego CA',     lat: 32.77, lng: -117.07 },
+  'Long Island University': { city: 'San Diego CA', lat: 32.77, lng: -117.07 },
+  'Tennessee':         { city: 'San Diego CA',     lat: 32.77, lng: -117.07 },
+  'UCLA':              { city: 'San Diego CA',     lat: 32.77, lng: -117.07 },
+  'UCF':               { city: 'San Diego CA',     lat: 32.77, lng: -117.07 },
+  'UConn':             { city: 'San Diego CA',     lat: 32.77, lng: -117.07 },
+  'Furman':            { city: 'San Diego CA',     lat: 32.77, lng: -117.07 },
+
+  // ── FRIDAY MARCH 20 — St. Louis MO (Enterprise Center) ────────────────
+  'Virginia':          { city: 'St. Louis MO',     lat: 38.63, lng: -90.20 },
+  'Wright State':      { city: 'St. Louis MO',     lat: 38.63, lng: -90.20 },
+  'Kansas':            { city: 'St. Louis MO',     lat: 38.63, lng: -90.20 },
+  'Cal Baptist':       { city: 'St. Louis MO',     lat: 38.63, lng: -90.20 },
+};
+
+/**
+ * Returns a proximity bonus (0–1.5 pts) if the team's campus is
+ * within ~200 miles of their actual tournament venue.
+ */
+function getProximityBonus(teamName: string, isNeutral: boolean): number {
+  if (!isNeutral) return 0;
+  const campus = TEAM_LOCATIONS[teamName];
+  const venue  = TEAM_VENUE_2026[teamName];
+  if (!campus || !venue) return 0;
+
+  const dist = haversineDistanceMiles(campus[0], campus[1], venue.lat, venue.lng);
+
+  if (dist < 50)  return 1.5;  // Essentially home crowd
+  if (dist < 100) return 1.0;  // Strong regional support
+  if (dist < 200) return 0.5;  // Noticeable fan presence
+  return 0;
+}
+
+/**
+ * Returns the venue city for a team's tournament game (for display).
+ */
+export function getTournamentVenue(teamName: string): string {
+  return TEAM_VENUE_2026[teamName]?.city ?? '';
+}
+
+function getProximityBonus(teamName: string, isNeutral: boolean): number {
+  if (!isNeutral) return 0;
+  const campus = TEAM_LOCATIONS[teamName];
+  if (!campus) return 0;
+
+  const minDist = Math.min(
+    ...TOURNAMENT_VENUES_2026.map(v =>
+      haversineDistanceMiles(campus[0], campus[1], v.lat, v.lng)
+    )
+  );
+
+  if (minDist < 50)  return 1.5;  // Essentially home
+  if (minDist < 100) return 1.0;  // Regional advantage
+  if (minDist < 200) return 0.5;  // Slight proximity edge
+  return 0;
+}
+
 
 // ---------------------------------------------------------------------------
 // Situational spot definitions
@@ -232,7 +461,9 @@ function projectGame(
   awayTeam: string,
   homeData: KenPomEntry | null,
   awayData: KenPomEntry | null,
-  isNeutralSite: boolean = false
+  isNeutralSite: boolean = false,
+  homeProximityBonus: number = 0,
+  awayProximityBonus: number = 0
 ): KenPomProjection {
 
   const dataQuality = homeData && awayData
@@ -280,9 +511,10 @@ function projectGame(
   const awayRawPts  = ((aOE + hDE) / 2) * (possessions / 100);
 
   // Apply home court adjustment
+  // On neutral sites: zero out standard HCA, but apply proximity bonus if applicable
   const hca = isNeutralSite ? 0 : HOME_COURT_ADVANTAGE;
-  const projectedHomeScore = homeRawPts + hca / 2;
-  const projectedAwayScore = awayRawPts - hca / 2;
+  const projectedHomeScore = homeRawPts + hca / 2 + homeProximityBonus;
+  const projectedAwayScore = awayRawPts - hca / 2 + awayProximityBonus;
 
   const projectedSpread = projectedHomeScore - projectedAwayScore; // positive = home favored
   const projectedTotal  = projectedHomeScore + projectedAwayScore;
@@ -323,27 +555,25 @@ function analyzeKenPomSpread(
   // Book spread: stored as bet.point from the perspective of the picked team
   //   e.g. "Kansas -4.5" → point = -4.5, bettingOnHome depends on which team
 
-  // Book line from HOME team's perspective (negative = home giving points)
-  // bet.point is always from the PICKED team's perspective:
-  //   Duke -28.5 → bet.point = -28.5, bettingOnHome = true
-  //   Siena +28.5 → bet.point = +28.5, bettingOnHome = false
-  // To get book line from home perspective:
-  //   If betting home: home line = bet.point (e.g. -28.5)
-  //   If betting away: home line = -bet.point (e.g. -(-28.5) = -28.5... wait)
-  // Both cases: home line = bettingOnHome ? bet.point : -bet.point
-  // But bet.point for away team +28.5 means away gets +28.5, so home line = -28.5
-  const bookLineFromHome = bettingOnHome ? bet.point! : -(bet.point!);
+  // The spread line is always expressed as the home team's required winning margin.
+  // bet.point for spreads is from the PICKED team's perspective:
+  //   Duke -28.5 (home fav): bet.point = -28.5, bettingOnHome = true
+  //   Siena +28.5 (away dog): bet.point = +28.5, bettingOnHome = false
+  //
+  // In both cases, the home team must win by MORE than 28.5 for the favorite to cover.
+  // Required home margin = abs(bet.point) regardless of which side we're betting.
+  //
+  // KenPom projectedSpread = how many points home actually wins by (positive = home wins).
+  // 
+  // Gap = projectedSpread - requiredMargin:
+  //   Positive → KenPom thinks home wins by MORE than required → home underpriced
+  //   Negative → KenPom thinks home wins by LESS than required → home overpriced
+  const requiredHomeMargin = Math.abs(bet.point!);
+  const spreadGap = projection.projectedSpread - requiredHomeMargin;
 
-  // KenPom projected spread is from home perspective (positive = home wins)
-  // Gap > 0: KenPom projects home winning by MORE than book implies → home underpriced
-  // Gap < 0: KenPom projects home winning by LESS than book implies → home overpriced
-  const spreadGap = projection.projectedSpread - bookLineFromHome;
-
-  // Edge for the BETTOR:
-  // If betting home and gap > 0 → home underpriced → positive edge
-  // If betting home and gap < 0 → home overpriced → negative edge (take the dog)
-  // If betting away and gap < 0 → home overpriced = away underpriced → positive edge
-  // If betting away and gap > 0 → home underpriced = away overpriced → negative edge
+  // Edge for the BETTOR on this specific pick:
+  //   Betting home (favorite): positive gap = good (model supports covering)
+  //   Betting away (underdog): negative gap = good (model says favorite overpriced)
   const effectiveGap = bettingOnHome ? spreadGap : -spreadGap;
 
   if (Math.abs(effectiveGap) < 1.5) return null; // below signal threshold
@@ -467,6 +697,38 @@ function analyzeSituationalSpots(
   const bettingOnHome = bet.rawData?.outcome?.name === home;
   const isUnder = bet.rawData?.outcome?.name?.toLowerCase().includes('under');
   const isOver  = bet.rawData?.outcome?.name?.toLowerCase().includes('over');
+
+  // --- Neutral site / proximity context ---
+  const isNeutral = isNeutralSiteGame(game);
+  if (isNeutral) {
+    const pickedTeam    = bettingOnHome ? home : away;
+    const opposingTeam  = bettingOnHome ? away : home;
+    const pickedProx    = getProximityBonus(pickedTeam, true);
+    const opposingProx  = getProximityBonus(opposingTeam, true);
+
+    if (pickedProx > 0) {
+      factors.push({
+        type:        'positive',
+        category:    'situation',
+        description: `${pickedTeam} playing within ${pickedProx >= 1.5 ? '50' : pickedProx >= 1.0 ? '100' : '200'} miles of campus — partial home crowd advantage on neutral floor`,
+        impact:      pickedProx,
+      });
+    } else if (opposingProx > 0) {
+      factors.push({
+        type:        'negative',
+        category:    'situation',
+        description: `${opposingTeam} playing near home — opponent has crowd proximity advantage at this neutral site`,
+        impact:      -opposingProx,
+      });
+    } else {
+      factors.push({
+        type:        'neutral',
+        category:    'situation',
+        description: `Neutral site — no meaningful home court factor for either team`,
+        impact:      0,
+      });
+    }
+  }
 
   // --- Rivalry game under ---
   if (
@@ -939,7 +1201,14 @@ export class AnalyticsEngine {
         console.warn('[analytics-engine] KenPom D1 fetch failed:', e);
       }
 
-      const projection = projectGame(game.home_team, game.away_team, homeKP, awayKP);
+      const neutralSite = isNeutralSiteGame(game);
+      // Proximity bonus: partial home court if team is near the venue
+      const homeProximity = getProximityBonus(game.home_team, neutralSite);
+      const awayProximity = getProximityBonus(game.away_team, neutralSite);
+      const projection    = projectGame(
+        game.home_team, game.away_team, homeKP, awayKP, neutralSite,
+        homeProximity, awayProximity
+      );
 
       const kpSpread = analyzeKenPomSpread(bet, projection);
       const kpML     = analyzeKenPomMoneyline(bet, projection);
