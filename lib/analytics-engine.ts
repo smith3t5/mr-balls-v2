@@ -841,7 +841,7 @@ export class AnalyticsEngine {
         if (!isMarketAllowedInState(market.key, game.sport, stateCode)) continue;
 
         for (const outcome of market.outcomes) {
-          if (outcome.price < criteria.odds_min || outcome.price > criteria.odds_max) continue;
+          // Skip odds filter entirely — engine ranks by edge, not odds range
 
           bets.push({
             id:             crypto.randomUUID(),

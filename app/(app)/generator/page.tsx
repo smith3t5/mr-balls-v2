@@ -75,8 +75,6 @@ const PRESETS = [
       legs:         3,
       betTypes:     ['moneyline'],
       extraMarkets: [] as string[],
-      oddsMin:      100,   // underdogs only (+100 or better)
-      oddsMax:      600,
       sgpMode:      'none' as const,
     },
   },
@@ -92,8 +90,6 @@ const PRESETS = [
       legs:         3,
       betTypes:     ['spread', 'over_under'],
       extraMarkets: [] as string[],
-      oddsMin:      -200,
-      oddsMax:      200,
       sgpMode:      'none' as const,
     },
   },
@@ -109,8 +105,6 @@ const PRESETS = [
       legs:         4,
       betTypes:     ['spread', 'over_under', 'moneyline'],
       extraMarkets: [] as string[],
-      oddsMin:      -250,
-      oddsMax:      350,
       sgpMode:      'none' as const,
     },
   },
@@ -126,8 +120,6 @@ const PRESETS = [
       legs:         5,
       betTypes:     ['spread', 'over_under', 'moneyline'],
       extraMarkets: [] as string[],
-      oddsMin:      -130,
-      oddsMax:      600,
       sgpMode:      'none' as const,
     },
   },
@@ -143,8 +135,6 @@ const PRESETS = [
       legs:         4,
       betTypes:     ['spread', 'over_under', 'moneyline'],
       extraMarkets: [] as string[],
-      oddsMin:      -300,
-      oddsMax:      500,
       sgpMode:      'none' as const,
     },
   },
@@ -184,8 +174,6 @@ export default function Generator() {
   const [numLegs, setNumLegs]               = useState(3);
   const [betTypes, setBetTypes]             = useState<string[]>(['spread', 'over_under', 'moneyline']);
   const [extraMarkets, setExtraMarkets]     = useState<string[]>([]);
-  const [oddsMin, setOddsMin]               = useState(-250);
-  const [oddsMax, setOddsMax]               = useState(400);
   const [sgpMode, setSgpMode]               = useState<'none' | 'allow' | 'only'>('none');
   const [showAdvanced, setShowAdvanced]     = useState(false);
 
@@ -209,8 +197,6 @@ export default function Generator() {
       legs:         number;
       betTypes:     string[];
       extraMarkets: string[];
-      oddsMin:      number;
-      oddsMax:      number;
       sgpMode:      string;
     },
     locked: any[] = []
@@ -231,8 +217,8 @@ export default function Generator() {
         body: JSON.stringify({
           sports:        config.sports,
           legs:          config.legs,
-          odds_min:      config.oddsMin,
-          odds_max:      config.oddsMax,
+          odds_min:      -9999,
+          odds_max:      9999,
           bet_types:     config.betTypes,
           extra_markets: config.extraMarkets,
           sgp_mode:      config.sgpMode,
@@ -257,7 +243,7 @@ export default function Generator() {
   const handleGenerate = (keepLocked = false) => {
     if (!keepLocked) setLockedLegs([]);
     runGenerate(
-      { sports: selectedSports, legs: numLegs, betTypes, extraMarkets, oddsMin, oddsMax, sgpMode },
+      { sports: selectedSports, legs: numLegs, betTypes, extraMarkets, sgpMode },
       keepLocked ? lockedLegs : []
     );
   };
@@ -268,14 +254,11 @@ export default function Generator() {
     setNumLegs(c.legs);
     setBetTypes(c.betTypes);
     setExtraMarkets(c.extraMarkets);
-    setOddsMin(c.oddsMin);
-    setOddsMax(c.oddsMax);
     setSgpMode(c.sgpMode);
     setLockedLegs([]);
     runGenerate({
       sports: c.sports, legs: c.legs, betTypes: c.betTypes,
-      extraMarkets: c.extraMarkets, oddsMin: c.oddsMin,
-      oddsMax: c.oddsMax, sgpMode: c.sgpMode,
+      extraMarkets: c.extraMarkets, sgpMode: c.sgpMode,
     });
   };
 
@@ -537,16 +520,7 @@ export default function Generator() {
                   <input type="number" min="1" max="8" value={numLegs}
                     onChange={e => setNumLegs(parseInt(e.target.value))} className="input-sm" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary mb-2">Odds Range (per leg)</label>
-                  <div className="flex gap-2">
-                    <input type="number" value={oddsMin} onChange={e => setOddsMin(parseInt(e.target.value))}
-                      placeholder="Min" className="input-sm flex-1" />
-                    <input type="number" value={oddsMax} onChange={e => setOddsMax(parseInt(e.target.value))}
-                      placeholder="Max" className="input-sm flex-1" />
-                  </div>
-                  <p className="text-xs text-muted mt-1">Use +100 min to target underdogs only</p>
-                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-secondary mb-2">Same Game Parlay</label>
                   <select value={sgpMode} onChange={e => setSgpMode(e.target.value as any)} className="input-sm">
