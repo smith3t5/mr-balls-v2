@@ -128,7 +128,7 @@ const TEAM_LOCATIONS: Record<string, [number, number]> = {
   'Georgetown':        [38.91, -77.07],
   'Marquette':         [43.04, -87.93],
   'Creighton':         [41.26, -96.00],
-  'St. John's':       [40.72, -73.79],
+  "St. John's":       [40.72, -73.79],
   'Providence':        [41.82, -71.41],
   'Xavier':            [39.15, -84.47],
   'Cincinnati':        [39.13, -84.51],
