@@ -4,16 +4,13 @@ import { Database } from '@/lib/db';
 import { AnalyticsEngine } from '@/lib/analytics-engine';
 import { OddsAPIClient } from '@/lib/odds-api-client';
 import { WeatherClient } from '@/lib/weather-client';
+import { reasonLegs, type LegContext } from '@/lib/pick-reasoning';
 import type { GeneratorCriteria, GameData } from '@/types';
 
 export const runtime = 'edge';
 
 // ---------------------------------------------------------------------------
 // Team name normalization
-//
-// The Odds API and KenPom use slightly different names for the same teams.
-// This map translates Odds API names → KenPom names so D1 lookups hit.
-// Add entries here as you discover mismatches in production.
 // ---------------------------------------------------------------------------
 const ODDS_TO_KENPOM: Record<string, string> = {
   // Big East
@@ -42,11 +39,71 @@ const ODDS_TO_KENPOM: Record<string, string> = {
   "Saint Mary's (CA)":        "Saint Mary's",
   'Saint Marys':              "Saint Mary's",
 
-  // Common suffixes the Odds API sometimes appends
-  // (handled programmatically below, but explicit entries take priority)
+  // Tournament teams (common Odds API vs KenPom mismatches)
+  'Alabama State Hornets':    'Alabama State',
+  'American University':      'American',
+  'Arkansas Pine Bluff':      'Ark.-Pine Bluff',
+  'Cal State Fullerton':      'CS Fullerton',
+  'Central Connecticut':      'Central Conn.',
+  'Coastal Carolina Chanticleers': 'Coastal Carolina',
+  'Detroit Mercy':            'Detroit',
+  'East Tennessee State':     'ETSU',
+  'Florida International':    'FIU',
+  'Gardner Webb':             'Gardner-Webb',
+  'George Mason Patriots':    'George Mason',
+  'Houston Baptist':          'HBU',
+  'Illinois Chicago':         'UIC',
+  'Indiana State Sycamores':  'Indiana State',
+  'Kennesaw State Owls':      'Kennesaw State',
+  'Long Island University':   'LIU',
+  'Loyola Chicago':           'Loyola-Chicago',
+  'Loyola Marymount':         'LMU (CA)',
+  'Massachusetts Minutemen':  'Massachusetts',
+  'McNeese State':            'McNeese',
+  'Milwaukee Panthers':       'Milwaukee',
+  'Mississippi Valley State': 'Miss. Valley St.',
+  'Monmouth Hawks':           'Monmouth',
+  'Montana State Bobcats':    'Montana St.',
+  'Morehead State Eagles':    'Morehead St.',
+  'Mount St. Mary\'s':        "Mount St. Mary's",
+  'Nebraska Omaha':           'Nebraska-Omaha',
+  'New Mexico State Aggies':  'New Mexico St.',
+  'Norfolk State Spartans':   'Norfolk State',
+  'North Dakota State':       'NDSU',
+  'Northeastern Huskies':     'Northeastern',
+  'Northern Iowa Panthers':   'Northern Iowa',
+  'Oakland Golden Grizzlies': 'Oakland',
+  'Prairie View A&M':         'Prairie View',
+  'Robert Morris Colonials':  'Robert Morris',
+  'Sacramento State Hornets': 'Sacramento St.',
+  'Saint Peter\'s Peacocks':  "Saint Peter's",
+  'Sam Houston State':        'Sam Houston',
+  'San Jose State Spartans':  'San Jose St.',
+  'Seton Hall Pirates':       'Seton Hall',
+  'Southeast Missouri State': 'SE Missouri St.',
+  'Southern Illinois Edwardsville': 'SIU Edwardsville',
+  'Southern University':      'Southern',
+  'St. Bonaventure Bonnies':  'St. Bonaventure',
+  'St. Francis (PA)':         'St. Francis PA',
+  'Stephen F. Austin':        'SFA',
+  'Stony Brook Seawolves':    'Stony Brook',
+  'Texas A&M Corpus Christi': 'Texas A&M-CC',
+  'Texas Rio Grande Valley':  'UTRGV',
+  'Texas Southern Tigers':    'Texas Southern',
+  'UT Martin Skyhawks':       'UT Martin',
+  'UTSA Roadrunners':         'UTSA',
+  'Vanderbilt Commodores':    'Vanderbilt',
+  'Vermont Catamounts':       'Vermont',
+  'Virginia Military Institute': 'VMI',
+  'Weber State Wildcats':     'Weber State',
+  'Western Illinois Leathernecks': 'Western Illinois',
+  'Western Kentucky Hilltoppers': 'Western Kentucky',
+  'Wichita State Shockers':   'Wichita State',
+  'William & Mary Tribe':     'William & Mary',
+  'Winston-Salem State':      'Winston-Salem',
+  'Youngstown State Penguins': 'Youngstown St.',
 };
 
-// Suffixes the Odds API sometimes appends that KenPom doesn't use
 const STRIP_SUFFIXES = [
   ' Wildcats', ' Bulldogs', ' Tigers', ' Bears', ' Wolverines',
   ' Spartans', ' Buckeyes', ' Hoosiers', ' Hawkeyes', ' Badgers',
@@ -59,13 +116,11 @@ const STRIP_SUFFIXES = [
   ' Seminoles', ' Hurricanes', ' Panthers', ' Yellow Jackets', ' Hokies',
   ' Cavaliers', ' Fighting Irish',
   ' Huskies', ' Retrievers', ' Anteaters',
+  ' Commodores', ' Catamounts', ' Bobcats',
 ];
 
 export function normalizeTeamName(oddsName: string): string {
-  // Check explicit map first
   if (ODDS_TO_KENPOM[oddsName]) return ODDS_TO_KENPOM[oddsName];
-
-  // Try stripping common suffixes
   for (const suffix of STRIP_SUFFIXES) {
     if (oddsName.endsWith(suffix)) {
       const stripped = oddsName.slice(0, oddsName.length - suffix.length).trim();
@@ -73,13 +128,9 @@ export function normalizeTeamName(oddsName: string): string {
       return stripped;
     }
   }
-
   return oddsName;
 }
 
-/**
- * Apply name normalization to all games so analytics-engine D1 lookups work.
- */
 function normalizeGameNames(games: GameData[]): GameData[] {
   return games.map(game => ({
     ...game,
@@ -94,13 +145,11 @@ function normalizeGameNames(games: GameData[]): GameData[] {
 
 export async function POST(request: NextRequest) {
   try {
-
     const { env } = getRequestContext();
     const kellyMultiplier = 0.25;
     const bankroll        = 1000;
     const userStateCode   = undefined as string | undefined;
 
-    // Parse and validate criteria
     const criteria: GeneratorCriteria = await request.json();
 
     if (!criteria.sports || criteria.sports.length === 0) {
@@ -109,12 +158,12 @@ export async function POST(request: NextRequest) {
 
     if (criteria.legs < 1 || criteria.legs > 8) {
       return NextResponse.json(
-        { error: 'Legs must be between 1 and 8 (1 = single bet, 2+ = parlay)' },
+        { error: 'Legs must be between 1 and 8' },
         { status: 400 }
       );
     }
 
-    const db = new Database(env.DB as D1Database);
+    const db              = new Database(env.DB as D1Database);
     const oddsClient      = new OddsAPIClient((env as any).ODDS_API_KEY || '', db);
     const weatherClient   = new WeatherClient(db);
     const analyticsEngine = new AnalyticsEngine(env.DB as D1Database, kellyMultiplier, bankroll);
@@ -123,12 +172,12 @@ export async function POST(request: NextRequest) {
 
     // Build market list
     const markets: string[] = [];
-    if (criteria.bet_types.includes('moneyline'))   markets.push('h2h');
-    if (criteria.bet_types.includes('spread'))      markets.push('spreads');
-    if (criteria.bet_types.includes('over_under'))  markets.push('totals');
-    if (criteria.extra_markets?.length > 0)         markets.push(...criteria.extra_markets);
+    if (criteria.bet_types.includes('moneyline'))  markets.push('h2h');
+    if (criteria.bet_types.includes('spread'))     markets.push('spreads');
+    if (criteria.bet_types.includes('over_under')) markets.push('totals');
+    if (criteria.extra_markets?.length > 0)        markets.push(...criteria.extra_markets);
 
-    const propMarketCount  = criteria.extra_markets?.length || 0;
+    const propMarketCount   = criteria.extra_markets?.length || 0;
     const estimatedPropLegs = propMarketCount > 0 && markets.length > 0
       ? Math.ceil(criteria.legs * (propMarketCount / markets.length))
       : 0;
@@ -139,7 +188,7 @@ export async function POST(request: NextRequest) {
       requiredPropLegs: estimatedPropLegs,
     });
 
-    // Fallback: retry without props if no games found
+    // Fallback without props
     if (games.length === 0 && criteria.extra_markets?.length > 0) {
       const basicMarkets = markets.filter(m => ['h2h', 'spreads', 'totals'].includes(m));
       if (basicMarkets.length > 0) {
@@ -172,10 +221,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Normalize team names so KenPom D1 lookups match
     games = normalizeGameNames(games);
 
-    // Enrich with weather (outdoor sports only)
+    // Weather enrichment (outdoor sports only)
     await Promise.all(
       games.map(async (game) => {
         if (
@@ -190,39 +238,78 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // Generate parlay
+    // Generate parlay via analytics engine
     const result = await analyticsEngine.generateSmartParlay(criteria, games, userStateCode);
 
     const requestStats = oddsClient.getRequestStats();
     console.log(`API Requests: ${requestStats.used}/${requestStats.budget}`);
 
+    // ---------------------------------------------------------------------------
+    // Shape raw legs — strip partial data language before sending to Claude
+    // ---------------------------------------------------------------------------
+    const PARTIAL_DATA_RE = /\s*\((partial data|model estimate)\)/gi;
+
+    const rawLegs = result.legs.map((leg) => ({
+      id:                  leg.id,
+      sport:               leg.sport,
+      event_id:            leg.event_id,
+      event_name:          leg.event_name,
+      commence_time:       leg.commence_time,
+      market:              leg.market,
+      pick:                leg.pick,
+      odds:                leg.odds,
+      participant:         leg.participant,
+      point:               leg.point,
+      bet_kind:            leg.bet_kind,
+      bet_tag:             leg.bet_tag,
+      dk_link:             leg.dk_link,
+      confidence:          leg.confidenceScore,
+      edge:                leg.edgeScore,
+      factors:             (leg.factors ?? []).map((f: any) => ({
+        ...f,
+        description: (f.description ?? '').replace(PARTIAL_DATA_RE, '').trim(),
+      })),
+      locked_by_user:      leg.locked_by_user,
+      expected_value:      leg.analytics.expected_value,
+      kelly_units:         leg.analytics.kelly_units,
+      kelly_fraction:      leg.analytics.kelly_fraction,
+      true_probability:    leg.analytics.true_probability,
+      implied_probability: leg.analytics.implied_probability,
+      bet_grade:           leg.analytics.bet_grade,
+    }));
+
+    // ---------------------------------------------------------------------------
+    // Claude reasoning layer — one defensible sentence per leg
+    // ---------------------------------------------------------------------------
+    let reasonings: Awaited<ReturnType<typeof reasonLegs>> = [];
+    try {
+      const legContexts: LegContext[] = rawLegs.map((leg) => ({
+        pick:             leg.pick,
+        eventName:        leg.event_name,
+        odds:             leg.odds,
+        market:           leg.market,
+        factors:          leg.factors,
+        edgeScore:        leg.edge,
+        confidenceScore:  leg.confidence,
+        trueProb:         leg.true_probability,
+        impliedProb:      leg.implied_probability,
+      }));
+
+      reasonings = await reasonLegs(legContexts);
+    } catch (err) {
+      console.error('[generate] Claude reasoning failed — returning picks without reasoning:', err);
+      // Graceful fallback: picks still returned, reasoning cards will show factor bullets
+    }
+
+    // Attach reasoning to each leg
+    const parlayLegs = rawLegs.map((leg, i) => ({
+      ...leg,
+      reasoning: reasonings[i] ?? null,
+    }));
+
     return NextResponse.json({
       success: true,
-      parlay:  result.legs.map((leg) => ({
-        id:                leg.id,
-        sport:             leg.sport,
-        event_id:          leg.event_id,
-        event_name:        leg.event_name,
-        commence_time:     leg.commence_time,
-        market:            leg.market,
-        pick:              leg.pick,
-        odds:              leg.odds,
-        participant:       leg.participant,
-        point:             leg.point,
-        bet_kind:          leg.bet_kind,
-        bet_tag:           leg.bet_tag,
-        dk_link:           leg.dk_link,
-        confidence:        leg.confidenceScore,
-        edge:              leg.edgeScore,
-        factors:           leg.factors,
-        locked_by_user:    leg.locked_by_user,
-        expected_value:    leg.analytics.expected_value,
-        kelly_units:       leg.analytics.kelly_units,
-        kelly_fraction:    leg.analytics.kelly_fraction,
-        true_probability:  leg.analytics.true_probability,
-        implied_probability: leg.analytics.implied_probability,
-        bet_grade:         leg.analytics.bet_grade,
-      })),
+      parlay:  parlayLegs,
       meta: {
         total_confidence: result.confidence,
         avg_edge:         result.avgEdge,
@@ -241,7 +328,7 @@ export async function POST(request: NextRequest) {
 }
 
 function calculateParlayOdds(americanOdds: number[]): number {
-  const decimal = americanOdds.map(o => o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o));
+  const decimal       = americanOdds.map(o => o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o));
   const parlayDecimal = decimal.reduce((acc, o) => acc * o, 1);
   return parlayDecimal >= 2
     ? Math.round((parlayDecimal - 1) * 100)

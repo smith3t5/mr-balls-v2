@@ -335,13 +335,22 @@ function analyzeKenPomSpread(
 
   if (Math.abs(effectiveGap) < 1.5) return null; // below signal threshold
 
-  const qualityNote = projection.dataQuality === 'partial' ? ' (partial data)' : '';
-  const direction = effectiveGap > 0 ? 'favors this pick' : 'opposes this pick';
+  const pickedTeam    = bettingOnHome ? game.home_team : game.away_team;
+  const kpFavoredTeam = projection.projectedSpread > 0 ? game.home_team : game.away_team;
+  const kpMargin      = Math.abs(projection.projectedSpread).toFixed(1);
+  const bookMargin    = Math.abs(bet.point!).toFixed(1);
+  const gapStr        = Math.abs(effectiveGap).toFixed(1);
+
+  const spreadDesc = effectiveGap >= 1.5
+    ? kpFavoredTeam === pickedTeam
+      ? `KenPom projects ${pickedTeam} winning by ${kpMargin} pts — taking them at ${bookMargin} gives ${gapStr} pts of model value`
+      : `KenPom projects a ${kpMargin}-pt margin — book's ${bookMargin}-pt line gives ${pickedTeam} ${gapStr} pts of spread cushion vs the model`
+    : `KenPom projects ${kpFavoredTeam} winning by ${kpMargin} pts — this pick on ${pickedTeam} goes against the model by ${gapStr} pts`;
 
   return {
     type: effectiveGap >= 1.5 ? 'positive' : 'negative',
     category: 'matchup',
-    description: `KenPom projects ${projection.projectedSpread > 0 ? game.home_team : game.away_team} by ${Math.abs(projection.projectedSpread).toFixed(1)} pts — book line ${direction} by ${Math.abs(effectiveGap).toFixed(1)} pts${qualityNote}`,
+    description: spreadDesc,
     impact: Math.min(Math.max(effectiveGap * 0.9, -5), 5),
   };
 }
@@ -369,12 +378,18 @@ function analyzeKenPomMoneyline(
   if (Math.abs(probEdge) < 0.03) return null; // < 3% difference is noise
 
   const teamName = bettingOnHome ? game.home_team : game.away_team;
-  const qualityNote = projection.dataQuality === 'partial' ? ' (partial data)' : '';
+
+  const kpPct   = (kenPomWinProb * 100).toFixed(0);
+  const mktPct  = (marketWinProb * 100).toFixed(0);
+  const edgePct = Math.abs(probEdge * 100).toFixed(1);
+  const mlDesc  = probEdge >= 0.03
+    ? `KenPom gives ${teamName} a ${kpPct}% win probability — market prices them at ${mktPct}%, a ${edgePct}% edge in our favor`
+    : `KenPom gives ${teamName} a ${kpPct}% win probability vs market's ${mktPct}% — model sees them as ${edgePct}% overvalued`;
 
   return {
     type: probEdge >= 0.03 ? 'positive' : 'negative',
     category: 'matchup',
-    description: `KenPom: ${teamName} has ${(kenPomWinProb * 100).toFixed(1)}% win probability vs market's ${(marketWinProb * 100).toFixed(1)}%${qualityNote} — ${Math.abs(probEdge * 100).toFixed(1)}% ${probEdge > 0 ? 'undervalued' : 'overvalued'}`,
+    description: mlDesc,
     impact: Math.min(Math.max(probEdge * 20, -5), 5),
   };
 }
@@ -396,13 +411,16 @@ function analyzeKenPomTotal(
 
   if (Math.abs(effectiveGap) < 2.0) return null;
 
-  const qualityNote = projection.dataQuality === 'partial' ? ' (partial data)' : '';
-  const direction   = effectiveGap > 0 ? 'supports this bet' : 'opposes this bet';
+  const gapAbs     = Math.abs(gap).toFixed(1);
+  const betSide    = isOver ? 'over' : 'under';
+  const totalDesc  = effectiveGap >= 2.0
+    ? `KenPom projects ${kpTotal.toFixed(1)} total pts — book at ${bookTotal} makes the ${betSide} the value side by ${gapAbs} pts`
+    : `KenPom projects ${kpTotal.toFixed(1)} total pts vs book's ${bookTotal} — this ${betSide} goes against the model by ${gapAbs} pts`;
 
   return {
     type: effectiveGap >= 2.0 ? 'positive' : 'negative',
     category: 'matchup',
-    description: `KenPom projects total of ${kpTotal.toFixed(1)} vs book's ${bookTotal} — ${direction} by ${Math.abs(gap).toFixed(1)} pts${qualityNote}`,
+    description: totalDesc,
     impact: Math.min(Math.max(effectiveGap * 0.7, -5), 5),
   };
 }

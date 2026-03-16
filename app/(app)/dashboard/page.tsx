@@ -1,322 +1,275 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
-  BarChart3, TrendingUp, TrendingDown, Award, Flame,
-  Target, Sparkles, Dices, Wallet, Trophy, Shield,
-  Calendar, ChevronRight, Zap, Brain, RefreshCw,
+  TrendingUp, TrendingDown, Target, Trophy,
+  Clock, CheckCircle2, XCircle, ChevronRight,
+  Sparkles, BarChart2, Percent, DollarSign,
 } from 'lucide-react';
 
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface BetStats {
+  total_bets:     number;
+  wins:           number;
+  losses:         number;
+  pending:        number;
+  win_rate:       number;
+  roi:            number;
+  total_wagered:  number;
+  total_return:   number;
+  profit_loss:    number;
+  current_streak: number;
 }
 
-function StatCard({ label, value, sub, color = 'text-white', icon: Icon }: any) {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function StatCard({
+  label, value, sub, icon: Icon, positive, neutral,
+}: {
+  label: string; value: string; sub?: string;
+  icon: React.ElementType; positive?: boolean; neutral?: boolean;
+}) {
   return (
-    <div className="stat-card">
-      <div className="stat-label flex items-center gap-1">
-        {Icon && <Icon className="w-3 h-3" />}
-        {label}
+    <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/60 p-5 hover:border-amber-500/30 transition-all duration-300">
+      {/* Ambient glow on hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
+      <div className="relative">
+        <div className="flex items-start justify-between mb-3">
+          <span className="text-xs font-semibold tracking-widest uppercase text-slate-500">{label}</span>
+          <div className={`p-2 rounded-xl ${neutral ? 'bg-slate-700/60' : positive ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+            <Icon className={`w-4 h-4 ${neutral ? 'text-slate-400' : positive ? 'text-emerald-400' : 'text-red-400'}`} />
+          </div>
+        </div>
+        <div className={`text-3xl font-black tracking-tight ${
+          neutral ? 'text-white' :
+          positive ? 'text-emerald-400' : 'text-red-400'
+        }`}>{value}</div>
+        {sub && <div className="text-xs text-slate-500 mt-1 font-medium">{sub}</div>}
       </div>
-      <div className={`stat-value-sm ${color}`}>{value}</div>
-      {sub && <div className="text-xs text-muted">{sub}</div>}
     </div>
   );
 }
 
+function StatusPill({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    won:     'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+    lost:    'bg-red-500/15 text-red-400 border-red-500/20',
+    pending: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
+    push:    'bg-slate-500/15 text-slate-400 border-slate-500/20',
+  };
+  const icons: Record<string, React.ReactNode> = {
+    won:     <CheckCircle2 className="w-3 h-3" />,
+    lost:    <XCircle className="w-3 h-3" />,
+    pending: <Clock className="w-3 h-3" />,
+    push:    <Target className="w-3 h-3" />,
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${styles[status] ?? styles.pending}`}>
+      {icons[status]} {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 export default function Dashboard() {
-  const [user, setUser]       = useState<any>(null);
-  const [bets, setBets]       = useState<any[]>([]);
-  const [stats, setStats]     = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [stats, setStats]       = useState<BetStats | null>(null);
+  const [bets, setBets]         = useState<any[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [username, setUsername] = useState('');
 
   useEffect(() => {
     const stored = localStorage.getItem('mrb_user');
-    if (!stored) { setLoading(false); return; }
-    const u = JSON.parse(stored);
-    setUser(u);
-    fetchBets(u.username);
+    const u = stored ? JSON.parse(stored).username : null;
+    if (u) {
+      setUsername(u);
+      loadData(u);
+    } else {
+      setLoading(false);
+    }
   }, []);
 
-  const fetchBets = async (username: string) => {
+  const loadData = async (u: string) => {
     try {
-      const res  = await fetch(`/api/bets?username=${encodeURIComponent(username)}`);
+      const res  = await fetch(`/api/bets?username=${encodeURIComponent(u)}`);
       const data = await res.json();
-      if (data.bets) setBets(data.bets.slice(0, 5));
-      if (data.stats) {
+      if (data.success) {
         setStats(data.stats);
-        // Sync stats back into localStorage user object
-        const stored = localStorage.getItem('mrb_user');
-        if (stored) {
-          const u = JSON.parse(stored);
-          const merged = { ...u, stats: { ...u.stats, ...data.stats } };
-          localStorage.setItem('mrb_user', JSON.stringify(merged));
-          setUser(merged);
-        }
+        setBets((data.bets ?? []).slice(0, 5));
       }
-    } catch (_) {
-      // Fall back to localStorage bets
-      const storedBets = localStorage.getItem('bets');
-      if (storedBets) setBets(JSON.parse(storedBets).slice(0, 5));
+    } catch {
+      // localStorage fallback
+      const raw  = localStorage.getItem('bets');
+      const all  = raw ? JSON.parse(raw) : [];
+      setBets(all.slice(0, 5));
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="skeleton-title mb-4" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="skeleton-card h-28" />)}
-        </div>
-        <div className="skeleton-card h-48" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="text-center py-20">
-        <p className="text-muted">Select your profile to continue.</p>
-      </div>
-    );
-  }
-
-  const s = user.stats ?? {};
-  const totalBets = s.total_bets ?? 0;
-  const wins      = s.wins      ?? 0;
-  const losses    = s.losses    ?? 0;
-  const roi       = s.roi       ?? 0;
-  const unitsProfit = s.units_profit ?? 0;
-  const streak    = s.current_streak ?? 0;
-  const sharpScore = s.sharp_score ?? 50;
+  const pl         = stats?.profit_loss ?? 0;
+  const roi        = stats?.roi ?? 0;
+  const winRate    = stats?.win_rate ?? 0;
+  const streak     = stats?.current_streak ?? 0;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between">
         <div>
-          <h1 className="heading-lg flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-amber-500" />
-            Welcome back, {user.username}
+          <h1 className="text-3xl font-black tracking-tight text-white">
+            {username ? `${username}'s Dashboard` : 'Dashboard'}
           </h1>
-          <p className="text-muted mt-1">Your performance dashboard</p>
+          <p className="text-slate-500 text-sm mt-1 font-medium">
+            Season performance overview
+          </p>
         </div>
         <button
-          onClick={() => { setLoading(true); fetchBets(user.username); }}
-          className="btn-secondary btn-sm flex items-center gap-2"
+          onClick={() => router.push('/generator')}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-sm transition-all duration-200 shadow-lg shadow-amber-500/20"
         >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
+          <Sparkles className="w-4 h-4" />
+          Generate Parlay
         </button>
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Record" icon={Award}
-          value={<><span className="text-white">{wins}</span><span className="text-gray-500 mx-1">-</span><span className="text-white">{losses}</span></>}
-          sub={`${totalBets} total bets`}
-        />
-        <StatCard
-          label="ROI" icon={TrendingUp}
-          value={`${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%`}
-          color={roi >= 0 ? 'text-emerald-400' : 'text-red-400'}
-          sub={`${unitsProfit >= 0 ? '+' : ''}${unitsProfit.toFixed(2)} units`}
-        />
-        <StatCard
-          label="Streak" icon={Flame}
-          value={`${streak > 0 ? '+' : ''}${streak}`}
-          color={streak > 0 ? 'text-emerald-400' : streak < 0 ? 'text-red-400' : 'text-white'}
-          sub={`Best: ${s.best_win_streak ?? 0}W`}
-        />
-        <StatCard
-          label="Sharp Score" icon={Target}
-          value={<>{sharpScore.toFixed(0)}<span className="text-xl text-gray-400">/100</span></>}
-          color="text-amber-400"
-          sub={sharpScore >= 70 ? 'Elite' : sharpScore >= 50 ? 'Sharp' : 'Improving'}
-        />
-      </div>
-
-      {/* Advanced metrics */}
-      <div className="card-glass">
-        <div className="flex items-center gap-3 mb-5">
-          <Shield className="w-6 h-6 text-cyan-400" />
-          <div>
-            <h2 className="text-xl font-bold text-white">Advanced Metrics</h2>
-            <p className="text-xs text-muted">Professional betting analytics</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            {
-              label: 'Avg Expected Value', icon: TrendingUp,
-              value: `${(s.total_ev ?? 0) >= 0 ? '+' : ''}${(s.total_ev ?? 0).toFixed(2)}%`,
-              color: (s.total_ev ?? 0) >= 3 ? 'text-emerald-400' : (s.total_ev ?? 0) >= 0 ? 'text-amber-400' : 'text-red-400',
-              sub: (s.total_ev ?? 0) >= 5 ? 'Excellent edge' : (s.total_ev ?? 0) >= 3 ? 'Good edge' : (s.total_ev ?? 0) >= 0 ? 'Positive EV' : 'Negative EV',
-            },
-            {
-              label: 'Closing Line Value', icon: Target,
-              value: `${(s.avg_clv ?? 0) >= 0 ? '+' : ''}${((s.avg_clv ?? 0) * 100).toFixed(2)}%`,
-              color: (s.avg_clv ?? 0) > 0 ? 'text-emerald-400' : 'text-amber-400',
-              sub: (s.avg_clv ?? 0) > 0.01 ? 'Beating market' : 'At market',
-            },
-            {
-              label: 'Sharpe Ratio', icon: BarChart3,
-              value: (s.sharpe_ratio ?? 0).toFixed(2),
-              color: (s.sharpe_ratio ?? 0) >= 2 ? 'text-emerald-400' : (s.sharpe_ratio ?? 0) >= 1 ? 'text-amber-400' : 'text-gray-400',
-              sub: (s.sharpe_ratio ?? 0) >= 2 ? 'Excellent' : (s.sharpe_ratio ?? 0) >= 1 ? 'Good' : 'Needs improvement',
-            },
-          ].map(m => (
-            <div key={m.label} className="p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
-              <div className="text-xs text-muted mb-2 flex items-center gap-1">
-                <m.icon className="w-3 h-3" />
-                {m.label}
-              </div>
-              <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
-              <div className="text-xs text-muted mt-1">{m.sub}</div>
-            </div>
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-28 rounded-2xl bg-slate-800/60 animate-pulse" />
           ))}
         </div>
-      </div>
-
-      {/* Quick actions */}
-      <div className="card-glass">
-        <h2 className="heading-sm mb-4">Quick Picks</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Link
-            href="/generator?preset=kenpom"
-            className="px-4 py-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-blue-500/50 transition-all text-center"
-          >
-            <Brain className="w-6 h-6 text-blue-400 mx-auto mb-2" />
-            <div className="font-bold text-white mb-1">KenPom Value</div>
-            <div className="text-xs text-muted">3-4 legs · efficiency-driven</div>
-          </Link>
-          <Link
-            href="/generator?preset=spots"
-            className="px-4 py-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/50 transition-all text-center"
-          >
-            <Target className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-            <div className="font-bold text-white mb-1">Situational Spots</div>
-            <div className="text-xs text-muted">3-4 legs · traps & fatigue</div>
-          </Link>
-          <Link
-            href="/generator?preset=chaos"
-            className="px-4 py-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 hover:border-red-500/50 transition-all text-center"
-          >
-            <Flame className="w-6 h-6 text-red-400 mx-auto mb-2" />
-            <div className="font-bold text-white mb-1">Chaos Mode</div>
-            <div className="text-xs text-muted">5-6 legs · long odds</div>
-          </Link>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Profit / Loss"
+            value={`${pl >= 0 ? '+' : ''}$${Math.abs(pl).toFixed(2)}`}
+            sub={`$${(stats?.total_wagered ?? 0).toFixed(0)} wagered`}
+            icon={pl >= 0 ? TrendingUp : TrendingDown}
+            positive={pl >= 0}
+          />
+          <StatCard
+            label="Win Rate"
+            value={`${winRate.toFixed(1)}%`}
+            sub={`${stats?.wins ?? 0}W · ${stats?.losses ?? 0}L · ${stats?.pending ?? 0} pending`}
+            icon={Percent}
+            positive={winRate >= 50}
+            neutral={winRate === 0}
+          />
+          <StatCard
+            label="ROI"
+            value={`${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%`}
+            sub="return on investment"
+            icon={BarChart2}
+            positive={roi >= 0}
+            neutral={roi === 0}
+          />
+          <StatCard
+            label="Current Streak"
+            value={streak === 0 ? '—' : `${Math.abs(streak)} ${streak > 0 ? 'W' : 'L'}`}
+            sub={streak === 0 ? 'No settled bets' : streak > 0 ? 'Win streak 🔥' : 'Variance happens'}
+            icon={Trophy}
+            positive={streak > 0}
+            neutral={streak === 0}
+          />
         </div>
-
-        <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-slate-700/50">
-          <Link href="/generator" className="btn-primary btn-sm flex items-center gap-2">
-            <Dices className="w-4 h-4" /> Generate Parlay
-          </Link>
-          <Link href="/portfolio" className="btn-secondary btn-sm flex items-center gap-2">
-            <Wallet className="w-4 h-4" /> Portfolio
-          </Link>
-          <Link href="/leaderboard" className="btn-secondary btn-sm flex items-center gap-2">
-            <Trophy className="w-4 h-4" /> Leaderboard
-          </Link>
-        </div>
-      </div>
+      )}
 
       {/* Recent bets */}
-      <div className="card-glass">
+      <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="heading-sm">Recent Bets</h2>
-          <Link href="/portfolio" className="text-sm text-amber-400 hover:text-amber-300 flex items-center gap-1">
+          <h2 className="text-lg font-bold text-white">Recent Bets</h2>
+          <button
+            onClick={() => router.push('/portfolio')}
+            className="flex items-center gap-1 text-sm text-amber-400 hover:text-amber-300 font-semibold transition-colors"
+          >
             View all <ChevronRight className="w-4 h-4" />
-          </Link>
+          </button>
         </div>
 
-        {bets.length === 0 ? (
-          <div className="text-center py-10">
-            <Dices className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-            <p className="text-muted mb-4">No bets yet.</p>
-            <Link href="/generator" className="btn-primary inline-flex items-center gap-2">
-              <Sparkles className="w-4 h-4" /> Generate Your First Parlay
-            </Link>
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-20 rounded-2xl bg-slate-800/60 animate-pulse" />
+            ))}
+          </div>
+        ) : bets.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-700 p-12 text-center">
+            <Trophy className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+            <p className="text-slate-500 font-medium">No bets yet</p>
+            <p className="text-slate-600 text-sm mt-1">Generate your first parlay to get started</p>
+            <button
+              onClick={() => router.push('/generator')}
+              className="mt-5 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-sm transition-all"
+            >
+              Generate Parlay
+            </button>
           </div>
         ) : (
           <div className="space-y-3">
-            {bets.map((bet: any) => (
-              <Link
-                key={bet.id}
-                href={`/portfolio?bet=${bet.id}`}
-                className="block p-4 bg-slate-800/50 rounded-xl hover:bg-slate-700/50 border border-slate-700/50 hover:border-amber-500/30 transition-all"
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="font-semibold text-white">
-                        {bet.legs?.length ?? '?'}-Leg Parlay
-                      </span>
-                      <span className={`badge-xs ${
-                        bet.status === 'won'  ? 'badge-success' :
-                        bet.status === 'lost' ? 'badge-error'   : 'badge-neutral'
-                      }`}>
-                        {bet.status?.toUpperCase()}
-                      </span>
-                      {bet.confidence && (
-                        <span className="badge-info badge-xs flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" />
-                          {parseFloat(bet.confidence).toFixed(1)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-sm text-muted space-y-0.5">
-                      {(bet.legs ?? []).slice(0, 3).map((leg: any, i: number) => (
-                        <div key={i} className="flex items-start gap-1">
-                          <span className="text-gray-600">•</span>
-                          <span>{leg.pick}</span>
+            {bets.map((bet: any) => {
+              const legs    = bet.legs ?? [];
+              const isWon   = bet.status === 'won';
+              const isLost  = bet.status === 'lost';
+              const pnl     = isWon
+                ? (bet.actual_return ?? 0) - (bet.stake ?? 0)
+                : isLost ? -(bet.stake ?? 0) : null;
+
+              return (
+                <button
+                  key={bet.id}
+                  onClick={() => router.push(`/portfolio?bet=${bet.id}`)}
+                  className="w-full text-left rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 p-4 transition-all duration-200 group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={`w-1.5 h-12 rounded-full flex-shrink-0 ${
+                        bet.status === 'won' ? 'bg-emerald-500' :
+                        bet.status === 'lost' ? 'bg-red-500' :
+                        'bg-amber-500'
+                      }`} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-bold text-white">
+                            {legs.length}-Leg Parlay
+                          </span>
+                          <StatusPill status={bet.status ?? 'pending'} />
                         </div>
-                      ))}
-                      {(bet.legs?.length ?? 0) > 3 && (
-                        <div className="text-xs text-gray-600">+ {bet.legs.length - 3} more</div>
-                      )}
+                        <p className="text-xs text-slate-500 truncate">
+                          {legs.slice(0, 2).map((l: any) => l.pick ?? l.event_name).join(' · ')}
+                          {legs.length > 2 && ` +${legs.length - 2} more`}
+                        </p>
+                      </div>
                     </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <div className={`text-base font-black ${
+                        pnl === null ? 'text-slate-400' :
+                        pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {pnl === null
+                          ? `$${(bet.stake ?? 0).toFixed(0)} to win`
+                          : `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`}
+                      </div>
+                      <div className="text-xs text-slate-600 mt-0.5">
+                        {bet.odds > 0 ? '+' : ''}{bet.odds}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-slate-500 ml-3 flex-shrink-0 transition-colors" />
                   </div>
-                  <div className="text-right ml-4">
-                    <div className="font-bold text-lg">{formatCurrency(bet.stake)}</div>
-                    <div className="text-amber-400 text-sm">{bet.odds > 0 ? '+' : ''}{bet.odds}</div>
-                    {bet.potential_return && (
-                      <div className="text-xs text-muted">to win {formatCurrency(bet.potential_return)}</div>
-                    )}
-                  </div>
-                </div>
-                {bet.created_at && (
-                  <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {new Date(bet.created_at).toLocaleDateString()}
-                  </div>
-                )}
-              </Link>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
-
-      {/* Performance insight */}
-      {totalBets >= 5 && (
-        <div className={`card ${roi > 5 ? 'border-emerald-500/30 bg-emerald-950/20' : roi > 0 ? 'border-amber-500/30 bg-amber-950/10' : 'border-slate-600/30'}`}>
-          <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            Performance Insight
-          </h3>
-          <p className="text-secondary text-sm">
-            {roi > 5
-              ? `You're crushing it. ${roi.toFixed(1)}% ROI is elite territory. Stay disciplined.`
-              : roi > 0
-              ? `Profitable so far — ${roi.toFixed(1)}% ROI. Focus on B-tier plays and above to build the edge.`
-              : `Stay patient. ${Math.abs(roi).toFixed(1)}% down. Sharp bettors focus on process over results.`}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
