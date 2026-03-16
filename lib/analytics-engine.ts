@@ -785,18 +785,9 @@ export class AnalyticsEngine {
 
     let valueBets = scoredBets.filter((b) => b.edgeScore >= criteria.min_edge);
 
-    // Tier filter
-    if (criteria.min_tier && criteria.min_tier !== 'any') {
-      const tierOrder: Record<string, number> = { S: 5, A: 4, B: 3, C: 2, D: 1 };
-      const minVal = tierOrder[criteria.min_tier];
-      valueBets = valueBets.filter(
-        (b) => (tierOrder[b.analytics.bet_grade ?? 'D'] ?? 1) >= minVal
-      );
-    }
-
     if (valueBets.length === 0) {
       throw new Error(
-        `No value bets found with current criteria. Try lowering minimum tier or edge threshold.`
+        `No value bets found with current criteria. Try adjusting odds range or bet types.`
       );
     }
 

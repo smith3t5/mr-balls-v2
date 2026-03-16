@@ -5,10 +5,14 @@ import toast from 'react-hot-toast';
 import {
   Sparkles, Shuffle, Save, Share2, ExternalLink,
   CheckCircle2, AlertTriangle, Info, Loader2, Lock,
-  Unlock, Calendar, Target, Flame, Brain,
-  ChevronDown, ChevronUp, RefreshCw, Plus, X,
+  Unlock, Calendar, Target, Flame, Brain, Trophy,
+  ChevronDown, ChevronUp, RefreshCw, Plus, X, Zap,
 } from 'lucide-react';
 import { generateParlayShareText } from '@/lib/draftkings-links';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
 const SPORTS = [
   { key: 'basketball_ncaab',     name: 'College Basketball', short: 'NCAAB' },
@@ -50,14 +54,37 @@ const LOADING_MESSAGES = [
   'Analyzing fatigue spots...',
   'Running the numbers the books hope you ignore...',
   'Asking the oracle nicely...',
+  'Scanning all 68 teams...',
+  'Finding where the line is soft...',
 ];
+
+// ---------------------------------------------------------------------------
+// March Madness presets
+// ---------------------------------------------------------------------------
 
 const PRESETS = [
   {
-    id: 'kenpom',
-    name: 'KenPom Value',
+    id: 'upsets',
+    name: 'First Round Upsets',
+    icon: Zap,
+    description: '3 legs · KenPom dogs with efficiency edge · Moneyline',
+    color: 'text-yellow-400',
+    border: 'hover:border-yellow-500/50',
+    config: {
+      sports:       ['basketball_ncaab'],
+      legs:         3,
+      betTypes:     ['moneyline'],
+      extraMarkets: [] as string[],
+      oddsMin:      100,   // underdogs only (+100 or better)
+      oddsMax:      600,
+      sgpMode:      'none' as const,
+    },
+  },
+  {
+    id: 'sharp',
+    name: 'Sharp Totals',
     icon: Brain,
-    description: '3-4 legs · Efficiency-driven · Spread & total edges',
+    description: '3-4 legs · Pace & defense mismatches · Spread + totals',
     color: 'text-blue-400',
     border: 'hover:border-blue-500/50',
     config: {
@@ -65,17 +92,16 @@ const PRESETS = [
       legs:         3,
       betTypes:     ['spread', 'over_under'],
       extraMarkets: [] as string[],
-      oddsMin:      -180,
+      oddsMin:      -200,
       oddsMax:      200,
-      minTier:      'B' as const,
       sgpMode:      'none' as const,
     },
   },
   {
-    id: 'spots',
-    name: 'Situational Spots',
+    id: 'value',
+    name: 'KenPom Value',
     icon: Target,
-    description: '3-4 legs · Fatigue, trap games, pace mismatches',
+    description: '4 legs · Best efficiency edges across all bet types',
     color: 'text-emerald-400',
     border: 'hover:border-emerald-500/50',
     config: {
@@ -83,17 +109,16 @@ const PRESETS = [
       legs:         4,
       betTypes:     ['spread', 'over_under', 'moneyline'],
       extraMarkets: [] as string[],
-      oddsMin:      -150,
-      oddsMax:      300,
-      minTier:      'B' as const,
+      oddsMin:      -250,
+      oddsMax:      350,
       sgpMode:      'none' as const,
     },
   },
   {
     id: 'chaos',
-    name: 'Chaos Mode',
+    name: 'Chaos Bracket',
     icon: Flame,
-    description: '5-6 legs · Longer odds · Swinging for the fences',
+    description: '5-6 legs · Longer shots · High variance · All bet types',
     color: 'text-red-400',
     border: 'hover:border-red-500/50',
     config: {
@@ -102,12 +127,15 @@ const PRESETS = [
       betTypes:     ['spread', 'over_under', 'moneyline'],
       extraMarkets: [] as string[],
       oddsMin:      -130,
-      oddsMax:      400,
-      minTier:      'C' as const,
+      oddsMax:      600,
       sgpMode:      'none' as const,
     },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function buildDraftKingsDeepLink(legs: any[]): string {
   const firstLeg = legs?.[0];
@@ -130,15 +158,18 @@ function GradeBadge({ grade }: { grade: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function Generator() {
   const [selectedSports, setSelectedSports] = useState<string[]>(['basketball_ncaab']);
   const [numLegs, setNumLegs]               = useState(3);
-  const [betTypes, setBetTypes]             = useState<string[]>(['spread', 'over_under']);
+  const [betTypes, setBetTypes]             = useState<string[]>(['spread', 'over_under', 'moneyline']);
   const [extraMarkets, setExtraMarkets]     = useState<string[]>([]);
-  const [oddsMin, setOddsMin]               = useState(-180);
-  const [oddsMax, setOddsMax]               = useState(250);
+  const [oddsMin, setOddsMin]               = useState(-250);
+  const [oddsMax, setOddsMax]               = useState(400);
   const [sgpMode, setSgpMode]               = useState<'none' | 'allow' | 'only'>('none');
-  const [minTier, setMinTier]               = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'any'>('C');
   const [showAdvanced, setShowAdvanced]     = useState(false);
 
   const [generating, setGenerating] = useState(false);
@@ -148,14 +179,12 @@ export default function Generator() {
   const [lockedLegs, setLockedLegs] = useState<any[]>([]);
   const [stake, setStake]           = useState(10);
 
-  const [manualPicks, setManualPicks]           = useState<any[]>([]);
-  const [showPickBuilder, setShowPickBuilder]   = useState(false);
-  const [pickTeam, setPickTeam]                 = useState('');
-  const [pickBetType, setPickBetType]           = useState('spread');
-  const [pickLine, setPickLine]                 = useState('');
+  const [manualPicks, setManualPicks]         = useState<any[]>([]);
+  const [showPickBuilder, setShowPickBuilder] = useState(false);
+  const [pickTeam, setPickTeam]               = useState('');
+  const [pickBetType, setPickBetType]         = useState('spread');
+  const [pickLine, setPickLine]               = useState('');
 
-  // Core generate function — accepts explicit config so preset can pass values
-  // directly without waiting for React state to settle
   const runGenerate = useCallback(async (
     config: {
       sports:       string[];
@@ -164,13 +193,14 @@ export default function Generator() {
       extraMarkets: string[];
       oddsMin:      number;
       oddsMax:      number;
-      minTier:      string;
       sgpMode:      string;
     },
     locked: any[] = []
   ) => {
-    if (!config.sports?.length) { setError('Select at least one sport'); return; }
-    if (!config.betTypes?.length && !config.extraMarkets?.length) { setError('Select at least one bet type'); return; }
+    if (!config.sports?.length)   { setError('Select at least one sport');    return; }
+    if (!config.betTypes?.length && !config.extraMarkets?.length) {
+      setError('Select at least one bet type'); return;
+    }
 
     setGenerating(true);
     setError('');
@@ -190,7 +220,7 @@ export default function Generator() {
           sgp_mode:      config.sgpMode,
           locked,
           min_edge:      0,
-          min_tier:      config.minTier,
+          min_tier:      'any',   // engine decides — no tier filtering
           mode:          'max_value',
         }),
       });
@@ -208,32 +238,31 @@ export default function Generator() {
   const handleGenerate = (keepLocked = false) => {
     if (!keepLocked) setLockedLegs([]);
     runGenerate(
-      { sports: selectedSports, legs: numLegs, betTypes, extraMarkets, oddsMin, oddsMax, minTier, sgpMode },
+      { sports: selectedSports, legs: numLegs, betTypes, extraMarkets, oddsMin, oddsMax, sgpMode },
       keepLocked ? lockedLegs : []
     );
   };
 
   const handlePreset = (preset: typeof PRESETS[0]) => {
     const c = preset.config;
-    // Update UI state for display
     setSelectedSports(c.sports);
     setNumLegs(c.legs);
     setBetTypes(c.betTypes);
     setExtraMarkets(c.extraMarkets);
     setOddsMin(c.oddsMin);
     setOddsMax(c.oddsMax);
-    setMinTier(c.minTier);
     setSgpMode(c.sgpMode);
     setLockedLegs([]);
-    // Pass config directly — no setTimeout needed, no stale state
-    runGenerate({ sports: c.sports, legs: c.legs, betTypes: c.betTypes, extraMarkets: c.extraMarkets, oddsMin: c.oddsMin, oddsMax: c.oddsMax, minTier: c.minTier, sgpMode: c.sgpMode });
+    runGenerate({
+      sports: c.sports, legs: c.legs, betTypes: c.betTypes,
+      extraMarkets: c.extraMarkets, oddsMin: c.oddsMin,
+      oddsMax: c.oddsMax, sgpMode: c.sgpMode,
+    });
   };
 
-  const handleRegenerate = () => handleGenerate(true);
-
-  const toggleSport    = (s: string) => setSelectedSports(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
-  const toggleBetType  = (t: string) => setBetTypes(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
-  const toggleMarket   = (m: string) => setExtraMarkets(p => p.includes(m) ? p.filter(x => x !== m) : [...p, m]);
+  const toggleSport   = (s: string) => setSelectedSports(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
+  const toggleBetType = (t: string) => setBetTypes(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const toggleMarket  = (m: string) => setExtraMarkets(p => p.includes(m) ? p.filter(x => x !== m) : [...p, m]);
 
   const toggleLock = (leg: any) => {
     const key = `${leg.event_id}_${leg.pick}`;
@@ -258,14 +287,13 @@ export default function Generator() {
       line:    pickLine,
     }]);
     setPickTeam(''); setPickLine(''); setShowPickBuilder(false);
-    toast.success('Pick added — it will be locked in on generate');
+    toast.success('Pick added');
   };
 
   const handleSave = async () => {
     if (!parlay) return;
     const stored   = localStorage.getItem('mrb_user');
     const username = stored ? JSON.parse(stored).username : 'Unknown';
-
     try {
       const res  = await fetch('/api/bets', {
         method:  'POST',
@@ -274,7 +302,7 @@ export default function Generator() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success('Parlay saved to portfolio!');
+      toast.success('Saved to portfolio!');
     } catch {
       const parlayOdds      = parlay.meta.parlay_odds;
       const potentialReturn = stake + (parlayOdds > 0 ? stake * (parlayOdds / 100) : stake * (100 / Math.abs(parlayOdds)));
@@ -293,31 +321,36 @@ export default function Generator() {
       confidence:  parlay.meta.total_confidence,
       avg_edge:    parlay.meta.avg_edge,
     });
-    navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard!'));
+    navigator.clipboard.writeText(text).then(() => toast.success('Copied!'));
   };
 
   const legs = parlay?.parlay ?? [];
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="heading-lg flex items-center gap-3">
-            <Sparkles className="w-8 h-8 text-amber-500" />
-            Parlay Generator
-          </h1>
-          <p className="text-muted mt-1">KenPom-powered picks with situational edge detection</p>
-        </div>
+      <div>
+        <h1 className="heading-lg flex items-center gap-3">
+          <Trophy className="w-8 h-8 text-amber-500" />
+          March Madness Generator
+        </h1>
+        <p className="text-muted mt-1">KenPom-powered tournament picks · engine selects the best available edges</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* ---- LEFT: Config ---- */}
+        {/* ---- LEFT ---- */}
         <div className="lg:col-span-1 space-y-5">
 
-          {/* Presets */}
-          <div className="card-glass">
-            <h3 className="heading-sm mb-4">Presets</h3>
+          {/* Tournament Presets */}
+          <div className="card-glass border-amber-500/20">
+            <h3 className="heading-sm mb-1 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              Tournament Presets
+            </h3>
+            <p className="text-xs text-muted mb-4">Engine picks the best legs — no manual filtering needed</p>
             <div className="space-y-2">
               {PRESETS.map(preset => {
                 const Icon = preset.icon;
@@ -335,7 +368,7 @@ export default function Generator() {
                         </div>
                         <div className="text-xs text-muted mt-0.5">{preset.description}</div>
                       </div>
-                      <Sparkles className="w-4 h-4 text-gray-500" />
+                      <Sparkles className="w-4 h-4 text-gray-600" />
                     </div>
                   </button>
                 );
@@ -372,7 +405,7 @@ export default function Generator() {
               ))}
             </div>
             <div className="mt-4 pt-4 border-t border-slate-700/50">
-              <h4 className="text-sm font-semibold text-muted mb-2">Player Props</h4>
+              <h4 className="text-sm font-semibold text-muted mb-2">Player Props <span className="text-xs font-normal">(KY only)</span></h4>
               <div className="space-y-2">
                 {[...NCAAB_PROPS, ...OTHER_PROPS].map(m => (
                   <label key={m.key} className="flex items-center gap-2 cursor-pointer group">
@@ -407,7 +440,7 @@ export default function Generator() {
                     value={pickLine} onChange={e => setPickLine(e.target.value)} className="input-sm flex-1" />
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={addManualPick} className="btn-primary btn-xs flex-1">Add Pick</button>
+                  <button onClick={addManualPick} className="btn-primary btn-xs flex-1">Add</button>
                   <button onClick={() => setShowPickBuilder(false)} className="btn-secondary btn-xs">Cancel</button>
                 </div>
               </div>
@@ -428,40 +461,32 @@ export default function Generator() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted">Add specific teams or bets to anchor the parlay around them.</p>
+              <p className="text-xs text-muted">Lock specific teams into the parlay before generating.</p>
             )}
           </div>
 
-          {/* Settings */}
+          {/* Advanced Settings */}
           <div className="card-glass">
             <button onClick={() => setShowAdvanced(p => !p)} className="w-full flex items-center justify-between text-left">
-              <h3 className="heading-sm">Settings</h3>
+              <h3 className="heading-sm">Advanced Settings</h3>
               {showAdvanced ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
             </button>
             {showAdvanced && (
               <div className="space-y-4 mt-4 pt-4 border-t border-slate-700/50">
                 <div>
-                  <label className="block text-sm font-medium text-secondary mb-2">Legs</label>
+                  <label className="block text-sm font-medium text-secondary mb-2">Number of Legs</label>
                   <input type="number" min="1" max="8" value={numLegs}
                     onChange={e => setNumLegs(parseInt(e.target.value))} className="input-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-secondary mb-2">Odds Range</label>
+                  <label className="block text-sm font-medium text-secondary mb-2">Odds Range (per leg)</label>
                   <div className="flex gap-2">
-                    <input type="number" value={oddsMin} onChange={e => setOddsMin(parseInt(e.target.value))} placeholder="Min" className="input-sm flex-1" />
-                    <input type="number" value={oddsMax} onChange={e => setOddsMax(parseInt(e.target.value))} placeholder="Max" className="input-sm flex-1" />
+                    <input type="number" value={oddsMin} onChange={e => setOddsMin(parseInt(e.target.value))}
+                      placeholder="Min" className="input-sm flex-1" />
+                    <input type="number" value={oddsMax} onChange={e => setOddsMax(parseInt(e.target.value))}
+                      placeholder="Max" className="input-sm flex-1" />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary mb-2">Minimum Quality</label>
-                  <select value={minTier} onChange={e => setMinTier(e.target.value as any)} className="input-sm">
-                    <option value="any">Any</option>
-                    <option value="D">D or better</option>
-                    <option value="C">C or better</option>
-                    <option value="B">B or better</option>
-                    <option value="A">A or better</option>
-                    <option value="S">S only</option>
-                  </select>
+                  <p className="text-xs text-muted mt-1">Use +100 min to target underdogs only</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-secondary mb-2">Same Game Parlay</label>
@@ -475,7 +500,7 @@ export default function Generator() {
             )}
           </div>
 
-          {/* Generate buttons */}
+          {/* Generate */}
           <div className="space-y-2">
             <button onClick={() => handleGenerate(false)} disabled={generating}
               className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2">
@@ -483,11 +508,17 @@ export default function Generator() {
                 ? <><Loader2 className="w-5 h-5 animate-spin" /> Analyzing...</>
                 : <><Shuffle className="w-5 h-5" /> Generate Parlay</>}
             </button>
-            {parlay && lockedLegs.length > 0 && (
-              <button onClick={handleRegenerate} disabled={generating}
-                className="w-full btn-secondary py-3 flex items-center justify-center gap-2">
+            {legs.length > 0 && lockedLegs.length > 0 && (
+              <button onClick={() => handleGenerate(true)} disabled={generating}
+                className="w-full btn-secondary py-2.5 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4" />
                 Regenerate Unlocked ({legs.length - lockedLegs.length} legs)
+              </button>
+            )}
+            {legs.length > 0 && lockedLegs.length === 0 && (
+              <button onClick={() => handleGenerate(false)} disabled={generating}
+                className="w-full btn-secondary py-2.5 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4" /> Regenerate All
               </button>
             )}
           </div>
@@ -505,13 +536,13 @@ export default function Generator() {
             <div className="card-glass text-center py-16">
               <Loader2 className="w-14 h-14 text-amber-500 mx-auto mb-4 animate-spin" />
               <p className="text-secondary text-lg font-semibold">{loadingMsg}</p>
-              <p className="text-sm text-muted mt-1">Cross-referencing KenPom efficiency data</p>
+              <p className="text-sm text-muted mt-1">Cross-referencing KenPom efficiency data for all 68 teams</p>
             </div>
           )}
 
-          {parlay && !generating && (
+          {legs.length > 0 && !generating && (
             <div className="space-y-4">
-              {/* Summary */}
+              {/* Summary bar */}
               <div className="card-glass border-amber-500/20">
                 <div className="flex items-start justify-between mb-4">
                   <div>
@@ -536,28 +567,28 @@ export default function Generator() {
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => { const url = buildDraftKingsDeepLink(legs); window.open(url, '_blank', 'noopener,noreferrer'); }}
+                  <button onClick={() => window.open(buildDraftKingsDeepLink(legs), '_blank', 'noopener,noreferrer')}
                     className="btn-success btn-sm flex items-center justify-center gap-1.5">
                     <ExternalLink className="w-4 h-4" /> Open in DraftKings
                   </button>
                   <button onClick={handleShare} className="btn-secondary btn-sm flex items-center justify-center gap-1.5">
                     <Share2 className="w-4 h-4" /> Share
                   </button>
-                  <button onClick={handleRegenerate} disabled={generating}
+                  <button onClick={() => handleGenerate(lockedLegs.length > 0)} disabled={generating}
                     className="btn-secondary btn-sm flex items-center justify-center gap-1.5">
                     <RefreshCw className="w-4 h-4" /> Regenerate
                   </button>
                 </div>
               </div>
 
-              {/* Legs */}
+              {/* Individual legs */}
               {legs.map((leg: any, i: number) => {
                 const locked = isLocked(leg);
                 return (
                   <div key={i} className={`card-hover ${locked ? 'border-amber-500/40' : ''}`}>
                     {locked && (
                       <div className="flex items-center gap-1.5 mb-2 text-xs text-amber-400 font-semibold">
-                        <Lock className="w-3 h-3" /> Locked — will stay on regenerate
+                        <Lock className="w-3 h-3" /> Locked — stays on regenerate
                       </div>
                     )}
                     <div className="flex items-start justify-between mb-3">
@@ -572,12 +603,17 @@ export default function Generator() {
                         <h4 className="font-bold text-white">{leg.event_name}</h4>
                         <p className="text-xs text-muted mt-0.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          {new Date(leg.commence_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          {new Date(leg.commence_time).toLocaleString('en-US', {
+                            weekday: 'short', month: 'short', day: 'numeric',
+                            hour: 'numeric', minute: '2-digit',
+                          })}
                         </p>
                         <p className="text-amber-400 font-bold mt-1 text-lg">{leg.pick}</p>
                       </div>
                       <div className="text-right ml-4 flex flex-col items-end gap-2">
-                        <div className="text-2xl font-bold">{leg.odds > 0 ? '+' : ''}{leg.odds}</div>
+                        <div className={`text-2xl font-bold ${leg.odds > 0 ? 'text-emerald-400' : 'text-white'}`}>
+                          {leg.odds > 0 ? '+' : ''}{leg.odds}
+                        </div>
                         <button onClick={() => toggleLock(leg)}
                           className={`btn-xs flex items-center gap-1 ${locked ? 'bg-amber-500 text-slate-900 font-bold' : 'btn-secondary'}`}>
                           {locked ? <><Lock className="w-3 h-3" /> Locked</> : <><Unlock className="w-3 h-3" /> Lock</>}
@@ -591,25 +627,26 @@ export default function Generator() {
                       </div>
                     </div>
 
+                    {/* Metrics */}
                     {leg.expected_value !== undefined && (
-                      <div className="grid grid-cols-4 gap-2 mb-3 p-3 rounded-xl bg-slate-900/50 border border-slate-700/30">
-                        <div className="text-center">
+                      <div className="grid grid-cols-4 gap-2 mb-3 p-3 rounded-xl bg-slate-900/50 border border-slate-700/30 text-center">
+                        <div>
                           <div className="text-xs text-muted mb-0.5">EV</div>
                           <div className={`text-sm font-bold ${(leg.expected_value ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {(leg.expected_value ?? 0) >= 0 ? '+' : ''}{(leg.expected_value ?? 0).toFixed(1)}%
                           </div>
                         </div>
-                        <div className="text-center">
+                        <div>
                           <div className="text-xs text-muted mb-0.5">Kelly</div>
                           <div className="text-sm font-bold text-white">{(leg.kelly_units ?? 0).toFixed(1)}u</div>
                         </div>
-                        <div className="text-center">
-                          <div className="text-xs text-muted mb-0.5">True %</div>
+                        <div>
+                          <div className="text-xs text-muted mb-0.5">Model %</div>
                           <div className="text-sm font-bold text-white">
                             {leg.true_probability != null ? (leg.true_probability * 100).toFixed(0) : '--'}%
                           </div>
                         </div>
-                        <div className="text-center">
+                        <div>
                           <div className="text-xs text-muted mb-0.5">Market %</div>
                           <div className="text-sm font-bold text-white">
                             {leg.implied_probability != null ? (leg.implied_probability * 100).toFixed(0) : '--'}%
@@ -618,6 +655,7 @@ export default function Generator() {
                       </div>
                     )}
 
+                    {/* Factors */}
                     {Array.isArray(leg.factors) && leg.factors.length > 0 && (
                       <div className="space-y-1.5 pt-3 border-t border-slate-700/50">
                         {leg.factors.map((f: any, j: number) => (
@@ -627,9 +665,10 @@ export default function Generator() {
                                 : f.type === 'negative' ? <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                                 : <Info className="w-3.5 h-3.5 text-blue-400" />}
                             </span>
-                            <span className={`text-xs ${f.type === 'positive' ? 'text-emerald-300' : f.type === 'negative' ? 'text-amber-300' : 'text-gray-400'}`}>
-                              {f.description}
-                            </span>
+                            <span className={`text-xs leading-relaxed ${
+                              f.type === 'positive' ? 'text-emerald-300' :
+                              f.type === 'negative' ? 'text-amber-300' : 'text-gray-400'
+                            }`}>{f.description}</span>
                           </div>
                         ))}
                       </div>
@@ -651,7 +690,7 @@ export default function Generator() {
                     <label className="block text-sm font-medium text-secondary mb-2">To Win</label>
                     <div className="px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 font-bold">
                       ${(stake * ((parlay.meta?.parlay_odds ?? 0) > 0
-                        ? (parlay.meta.parlay_odds) / 100
+                        ? (parlay.meta.parlay_odds / 100)
                         : Math.abs(100 / (parlay.meta?.parlay_odds || -100)))).toFixed(2)}
                     </div>
                   </div>
@@ -663,12 +702,12 @@ export default function Generator() {
             </div>
           )}
 
-          {!parlay && !generating && !error && (
+          {legs.length === 0 && !generating && !error && (
             <div className="card-glass text-center py-20">
-              <Sparkles className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <h3 className="heading-sm mb-2">Ready to Generate</h3>
-              <p className="text-muted text-sm">Pick a preset or configure manually, then hit Generate.</p>
-              <p className="text-muted text-xs mt-2">KenPom efficiency data updates daily at 6 AM UTC.</p>
+              <Trophy className="w-16 h-16 text-amber-500/30 mx-auto mb-4" />
+              <h3 className="heading-sm mb-2">March Madness is here</h3>
+              <p className="text-muted text-sm mb-1">Hit a preset or configure manually and let the engine find the edges.</p>
+              <p className="text-muted text-xs">KenPom data refreshes daily at 6 AM UTC.</p>
             </div>
           )}
         </div>
