@@ -131,6 +131,23 @@ const PRESETS = [
       sgpMode:      'none' as const,
     },
   },
+  {
+    id: 'best',
+    name: 'Best of All',
+    icon: Trophy,
+    description: '4 legs · All methodologies combined · Engine picks the top edges',
+    color: 'text-amber-400',
+    border: 'hover:border-amber-500/50',
+    config: {
+      sports:       ['basketball_ncaab'],
+      legs:         4,
+      betTypes:     ['spread', 'over_under', 'moneyline'],
+      extraMarkets: [] as string[],
+      oddsMin:      -300,
+      oddsMax:      500,
+      sgpMode:      'none' as const,
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -176,8 +193,9 @@ export default function Generator() {
   const [parlay, setParlay]         = useState<any>(null);
   const [error, setError]           = useState('');
   const [loadingMsg, setLoadingMsg] = useState('');
-  const [lockedLegs, setLockedLegs] = useState<any[]>([]);
-  const [stake, setStake]           = useState(10);
+  const [lockedLegs, setLockedLegs]     = useState<any[]>([]);
+  const [selectedLegs, setSelectedLegs] = useState<Set<number>>(new Set());
+  const [stake, setStake]               = useState(10);
 
   const [manualPicks, setManualPicks]         = useState<any[]>([]);
   const [showPickBuilder, setShowPickBuilder] = useState(false);
@@ -228,6 +246,7 @@ export default function Generator() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || data.details || 'Failed to generate parlay');
       setParlay(data);
+      setSelectedLegs(new Set()); // reset selection on new parlay
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -276,6 +295,46 @@ export default function Generator() {
 
   const isLocked = (leg: any) =>
     lockedLegs.some(l => `${l.event_id}_${l.pick}` === `${leg.event_id}_${leg.pick}`);
+
+  const toggleSelectLeg = (i: number) => {
+    setSelectedLegs(prev => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  };
+
+  const selectAllLegs = () => {
+    setSelectedLegs(new Set(legs.map((_: any, i: number) => i)));
+  };
+
+  const clearSelection = () => setSelectedLegs(new Set());
+
+  const buildFromSelected = async () => {
+    if (selectedLegs.size === 0) { toast.error('Select at least one leg'); return; }
+    const picked = legs.filter((_: any, i: number) => selectedLegs.has(i));
+    const stored   = localStorage.getItem('mrb_user');
+    const username = stored ? JSON.parse(stored).username : 'Unknown';
+
+    // Calculate parlay odds from selected legs
+    const decOdds  = picked.map((l: any) => l.odds > 0 ? 1 + l.odds / 100 : 1 + 100 / Math.abs(l.odds));
+    const parlayDec = decOdds.reduce((a: number, b: number) => a * b, 1);
+    const parlayOdds = parlayDec >= 2
+      ? Math.round((parlayDec - 1) * 100)
+      : -Math.round(100 / (parlayDec - 1));
+    const avgConf = picked.reduce((s: number, l: any) => s + (l.confidence ?? 5), 0) / picked.length;
+    const avgEdge = picked.reduce((s: number, l: any) => s + (l.edge ?? 0), 0) / picked.length;
+
+    const customParlay = {
+      parlay: picked,
+      meta:   { parlay_odds: parlayOdds, total_confidence: avgConf, avg_edge: avgEdge },
+    };
+
+    // Show it in the results panel
+    setParlay(customParlay);
+    setSelectedLegs(new Set());
+    toast.success(`Built ${picked.length}-leg parlay from your selection`);
+  };
 
   const addManualPick = () => {
     if (!pickTeam.trim()) return;
@@ -581,16 +640,62 @@ export default function Generator() {
                 </div>
               </div>
 
+              {/* Selection action bar */}
+              {legs.length > 1 && (
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-slate-900/60 border border-slate-700/50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted">
+                      {selectedLegs.size === 0 ? 'Select legs to build a custom parlay' : `${selectedLegs.size} of ${legs.length} selected`}
+                    </span>
+                    {selectedLegs.size === 0
+                      ? <button onClick={selectAllLegs} className="text-xs text-amber-400 hover:text-amber-300 transition-colors">Select all</button>
+                      : <button onClick={clearSelection} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Clear</button>
+                    }
+                  </div>
+                  {selectedLegs.size > 0 && selectedLegs.size < legs.length && (
+                    <button
+                      onClick={buildFromSelected}
+                      className="btn-primary btn-xs flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Build {selectedLegs.size}-Leg Parlay
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Individual legs */}
               {legs.map((leg: any, i: number) => {
                 const locked = isLocked(leg);
                 return (
                   <div key={i} className={`card-hover ${locked ? 'border-amber-500/40' : ''}`}>
-                    {locked && (
-                      <div className="flex items-center gap-1.5 mb-2 text-xs text-amber-400 font-semibold">
-                        <Lock className="w-3 h-3" /> Locked — stays on regenerate
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between mb-2">
+                      {/* Checkbox for custom selection */}
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <div
+                          onClick={() => toggleSelectLeg(i)}
+                          className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-all cursor-pointer ${
+                            selectedLegs.has(i)
+                              ? 'bg-amber-500 border-amber-500'
+                              : 'border-slate-600 hover:border-amber-500/50'
+                          }`}
+                        >
+                          {selectedLegs.has(i) && (
+                            <svg className="w-3 h-3 text-slate-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted group-hover:text-white transition-colors">
+                          {selectedLegs.has(i) ? 'Selected' : 'Add to parlay'}
+                        </span>
+                      </label>
+                      {locked && (
+                        <div className="flex items-center gap-1 text-xs text-amber-400 font-semibold">
+                          <Lock className="w-3 h-3" /> Locked
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">

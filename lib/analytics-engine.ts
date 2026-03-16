@@ -791,14 +791,21 @@ export class AnalyticsEngine {
       );
     }
 
-    // Light shuffle of top half for variety
-    const topHalf = Math.ceil(valueBets.length / 2);
-    const top     = valueBets.slice(0, topHalf);
-    for (let i = top.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [top[i], top[j]] = [top[j], top[i]];
+    // Sort by composite score descending (best edges first)
+    valueBets.sort((a, b) => b.edgeScore - a.edgeScore);
+
+    // In 'max_value' mode take the pure top-scored legs (no shuffle).
+    // In other modes shuffle the top half for variety so you get different
+    // picks on repeated generates.
+    if (criteria.mode !== 'max_value') {
+      const topHalf = Math.ceil(valueBets.length / 2);
+      const top     = valueBets.slice(0, topHalf);
+      for (let i = top.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [top[i], top[j]] = [top[j], top[i]];
+      }
+      valueBets = [...top, ...valueBets.slice(topHalf)];
     }
-    valueBets = [...top, ...valueBets.slice(topHalf)];
 
     const parlay = this.buildParlay(valueBets, criteria.legs, criteria.sgp_mode, criteria.locked);
 
