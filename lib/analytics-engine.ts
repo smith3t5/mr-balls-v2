@@ -272,22 +272,6 @@ export function getTournamentVenue(teamName: string): string {
   return TEAM_VENUE_2026[teamName]?.city ?? '';
 }
 
-function getProximityBonus(teamName: string, isNeutral: boolean): number {
-  if (!isNeutral) return 0;
-  const campus = TEAM_LOCATIONS[teamName];
-  if (!campus) return 0;
-
-  const minDist = Math.min(
-    ...TOURNAMENT_VENUES_2026.map(v =>
-      haversineDistanceMiles(campus[0], campus[1], v.lat, v.lng)
-    )
-  );
-
-  if (minDist < 50)  return 1.5;  // Essentially home
-  if (minDist < 100) return 1.0;  // Regional advantage
-  if (minDist < 200) return 0.5;  // Slight proximity edge
-  return 0;
-}
 
 
 // ---------------------------------------------------------------------------
