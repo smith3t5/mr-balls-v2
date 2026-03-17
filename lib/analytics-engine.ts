@@ -60,6 +60,26 @@ export type { KenPomEntry } from './kenpom-sync';
 // Home court advantage in NCAAB (points)
 const HOME_COURT_ADVANTAGE = 3.1;
 
+/**
+ * Normalize an outcome name to match the game's home_team / away_team strings.
+ * The Odds API outcome names include mascots ("Duke Blue Devils") while the
+ * game object after normalization uses short names ("Duke"). This mismatch
+ * breaks bettingOnHome detection — fix it by finding the closest match.
+ */
+function normalizeOutcomeName(outcomeName: string, homeTeam: string, awayTeam: string): string {
+  if (outcomeName === homeTeam || outcomeName === awayTeam) return outcomeName;
+  // Exact prefix match: "Duke Blue Devils".startsWith("Duke") → "Duke"
+  if (outcomeName.startsWith(homeTeam + ' ') || outcomeName.startsWith(homeTeam)) return homeTeam;
+  if (outcomeName.startsWith(awayTeam + ' ') || outcomeName.startsWith(awayTeam)) return awayTeam;
+  // Reverse: homeTeam is a prefix of outcomeName already handled above
+  // Try: outcomeName first word matches team first word (e.g. "Cal" vs "Cal Baptist")
+  const firstWord = outcomeName.split(' ')[0];
+  if (homeTeam.startsWith(firstWord) && firstWord.length > 3) return homeTeam;
+  if (awayTeam.startsWith(firstWord) && firstWord.length > 3) return awayTeam;
+  // For Over/Under outcomes in totals markets — return as-is
+  return outcomeName;
+}
+
 // ---------------------------------------------------------------------------
 // NCAA Tournament neutral site detection
 // ---------------------------------------------------------------------------
@@ -535,9 +555,6 @@ function analyzeKenPomSpread(
 
   // Determine if bet is on home or away team
   const bettingOnHome = bet.rawData.outcome.name === game.home_team;
-  // KenPom spread: positive = home favored
-  // Book spread: stored as bet.point from the perspective of the picked team
-  //   e.g. "Kansas -4.5" → point = -4.5, bettingOnHome depends on which team
 
   // The spread line is always expressed as the home team's required winning margin.
   // bet.point for spreads is from the PICKED team's perspective:
@@ -1129,6 +1146,13 @@ export class AnalyticsEngine {
         for (const outcome of market.outcomes) {
           // Skip odds filter entirely — engine ranks by edge, not odds range
 
+          // Normalize outcome.name to match game.home_team / game.away_team
+          // so bettingOnHome checks work correctly (e.g. "Duke Blue Devils" → "Duke")
+          const normalizedOutcome = {
+            ...outcome,
+            name: normalizeOutcomeName(outcome.name, game.home_team, game.away_team),
+          };
+
           bets.push({
             id:             crypto.randomUUID(),
             sport:          game.sport,
@@ -1136,14 +1160,14 @@ export class AnalyticsEngine {
             event_name:     `${game.away_team} @ ${game.home_team}`,
             commence_time:  game.commence_time,
             market:         market.key,
-            pick:           this.formatOutcomeLabel(market.key, outcome),
+            pick:           this.formatOutcomeLabel(market.key, normalizedOutcome),
             odds:           outcome.price,
             participant:    outcome.participant ?? null,
             point:          outcome.point ?? null,
             bet_kind:       this.classifyBetKind(market.key),
             bet_tag:        this.classifyBetTag(market.key, outcome),
             dk_link:        generateDraftKingsLink(game.sport, game.home_team, game.away_team, game.commence_time),
-            rawData:        { game, outcome, market },
+            rawData:        { game, outcome: normalizedOutcome, market },
           });
         }
       }
