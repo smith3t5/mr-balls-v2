@@ -511,8 +511,12 @@ function projectGame(
   // Home team scores its OE against away team's DE, both relative to avg
   // Formula: (team_OE / avg_DE) * opp_DE = adjusted expected score per 100 poss
   // Simplified: expected = (team_OE + opp_DE) / 2  (standard KenPom approach)
-  const homeRawPts  = ((hOE + aDE) / 2) * (possessions / 100);
-  const awayRawPts  = ((aOE + hDE) / 2) * (possessions / 100);
+  // Correct KenPom formula:
+  // Expected pts = team_AdjOE * (opp_AdjDE / 100) * (possessions / 100)
+  // AdjOE = pts per 100 poss vs avg defense; AdjDE = pts allowed per 100 poss vs avg offense
+  // Multiplying them gives the adjusted expected output against THIS opponent
+  const homeRawPts  = hOE * (aDE / 100) * (possessions / 100);
+  const awayRawPts  = aOE * (hDE / 100) * (possessions / 100);
 
   // Apply home court adjustment
   // On neutral sites: zero out standard HCA, but apply proximity bonus if applicable
