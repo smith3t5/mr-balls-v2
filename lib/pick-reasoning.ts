@@ -19,6 +19,7 @@ export interface LegContext {
   confidenceScore:  number;
   trueProb?:        number;
   impliedProb?:     number;
+  recentNews?:      string;   // Injury/availability headlines from ESPN
 }
 
 export interface ReasonedLeg {
@@ -101,6 +102,7 @@ function buildPrompt(legs: LegContext[]): string {
   Edge score: ${leg.edgeScore.toFixed(2)} (higher = stronger)
   Model win probability: ${leg.trueProb ? (leg.trueProb * 100).toFixed(1) + '%' : 'N/A'}
   Market win probability: ${leg.impliedProb ? (leg.impliedProb * 100).toFixed(1) + '%' : 'N/A'}
+  Recent news: ${leg.recentNews ?? 'None found — verify lineup status'}
   Key data signals:
 ${allFactors.map(f => `    - [${f.type.toUpperCase()}] ${f.description}`).join('\n')}`;
   }).join('\n\n');
@@ -131,13 +133,23 @@ Example format:
 }
 
 function fallbackReasoning(leg: LegContext): ReasonedLeg {
-  // Fallback if Claude is unavailable — better than template strings
+  // Fallback if Claude is unavailable — use the actual factor data
   const positiveFactors = leg.factors.filter(f => f.type === 'positive');
+  const negativeFactors = leg.factors.filter(f => f.type === 'negative');
   const bestFactor      = positiveFactors.sort((a, b) => b.impact - a.impact)[0];
+  const worstFactor     = negativeFactors.sort((a, b) => a.impact - b.impact)[0];
+
+  const probDiff = leg.trueProb && leg.impliedProb
+    ? ((leg.trueProb - leg.impliedProb) * 100).toFixed(1)
+    : null;
 
   return {
-    headline:   bestFactor?.description ?? `Model scores this as a ${leg.edgeScore > 0 ? 'positive' : 'neutral'} edge play`,
-    supporting: `Model probability ${leg.trueProb ? (leg.trueProb * 100).toFixed(0) + '%' : 'N/A'} vs market ${leg.impliedProb ? (leg.impliedProb * 100).toFixed(0) + '%' : 'N/A'}`,
-    risk:       'Line movement or injury news could shift value before tip',
+    headline:   bestFactor?.description
+                ?? `Edge score ${leg.edgeScore.toFixed(2)} — model favors this pick`,
+    supporting: probDiff
+                ? `Model win probability ${(leg.trueProb! * 100).toFixed(0)}% vs market's ${(leg.impliedProb! * 100).toFixed(0)}% — ${probDiff}% edge`
+                : `${positiveFactors.length} positive signal(s), ${negativeFactors.length} negative`,
+    risk:       worstFactor?.description
+                ?? `KenPom efficiency data does not account for injuries — verify key players are active before betting`,
   };
 }

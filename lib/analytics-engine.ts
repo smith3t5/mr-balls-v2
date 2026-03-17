@@ -1217,6 +1217,8 @@ export class AnalyticsEngine {
         game.home_team, game.away_team, homeKP, awayKP, neutralSite,
         homeProximity, awayProximity
       );
+      // Attach projection to bet so trueProbability calculation can use it
+      (bet as any)._projection = projection;
 
       const kpSpread = analyzeKenPomSpread(bet, projection);
       const kpML     = analyzeKenPomMoneyline(bet, projection);
@@ -1273,11 +1275,43 @@ export class AnalyticsEngine {
     const confidenceScore = calculateConfidenceScore(factors, bet);
     const marketProb     = impliedProbability(bet.odds!);
 
-    const confidenceWeight = Math.min(confidenceScore / 10, 1);
-    const trueProbability  = Math.max(
-      0.05,
-      Math.min(0.95, marketProb + (edgeScore / 100) * confidenceWeight)
-    );
+    // True probability: use KenPom win probability directly when available.
+    // For spread bets: convert KenPom projected margin to win probability for the PICKED side.
+    // For ML bets: use homeWinProbability directly.
+    // Fallback: nudge market probability by edge score (old method) when no KenPom data.
+    let trueProbability: number;
+    const projection = (bet as any)._projection as KenPomProjection | undefined;
+    if (projection && projection.dataQuality !== 'missing') {
+      if (bet.market === 'h2h') {
+        // ML: use KenPom win probability directly
+        const bettingOnHomeML = bet.rawData?.outcome?.name === (bet.rawData?.game as GameData)?.home_team;
+        trueProbability = bettingOnHomeML
+          ? projection.homeWinProbability
+          : 1 - projection.homeWinProbability;
+      } else if (bet.market === 'spreads' && bet.point != null) {
+        // Spread: probability of covering = P(home wins by > requiredMargin)
+        // Use logistic function on (projectedSpread - requiredMargin)
+        const bettingOnHomeSpr = bet.rawData?.outcome?.name === (bet.rawData?.game as GameData)?.home_team;
+        const requiredMargin   = Math.abs(bet.point);
+        const gap              = projection.projectedSpread - requiredMargin;
+        // effectiveGap from bettor's perspective
+        const effectiveGap     = bettingOnHomeSpr ? gap : -gap;
+        // Convert to probability: 1pt of spread cushion ≈ 3% probability shift
+        trueProbability = Math.max(0.05, Math.min(0.95, 0.5 + effectiveGap * 0.03));
+      } else {
+        // Totals or other: nudge market prob by edge score
+        const confidenceWeight = Math.min(confidenceScore / 10, 1);
+        trueProbability = Math.max(0.05, Math.min(0.95,
+          marketProb + (edgeScore / 100) * confidenceWeight
+        ));
+      }
+    } else {
+      // No KenPom data — fall back to edge-adjusted market probability
+      const confidenceWeight = Math.min(confidenceScore / 10, 1);
+      trueProbability = Math.max(0.05, Math.min(0.95,
+        marketProb + (edgeScore / 100) * confidenceWeight
+      ));
+    }
 
     const expectedValue = calculateEVPercentage(trueProbability, bet.odds!);
     const kelly         = kellyBetSize(

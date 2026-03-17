@@ -5,6 +5,7 @@ import { AnalyticsEngine } from '@/lib/analytics-engine';
 import { OddsAPIClient } from '@/lib/odds-api-client';
 import { WeatherClient } from '@/lib/weather-client';
 import { reasonLegs, type LegContext } from '@/lib/pick-reasoning';
+import { fetchMatchupNews, formatNewsForPrompt } from '@/lib/team-news';
 import type { GeneratorCriteria, GameData } from '@/types';
 
 export const runtime = 'edge';
@@ -142,6 +143,35 @@ function normalizeGameNames(games: GameData[]): GameData[] {
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 2026 NCAA Tournament team whitelist
+// All 68 teams in the official bracket (KenPom normalized names).
+// Only games where at least one team appears here are surfaced.
+// ---------------------------------------------------------------------------
+const NCAA_TOURNAMENT_2026_TEAMS = new Set([
+  // First Four
+  'UMBC', 'Howard', 'Texas', 'NC State',
+  'Prairie View', 'Lehigh', 'Miami OH', 'SMU',
+  // Round of 64 — Thursday March 19
+  'Ohio State', 'TCU', 'Nebraska', 'Troy',
+  'Louisville', 'South Florida', 'Wisconsin', 'High Point',
+  'Duke', 'Siena', 'Vanderbilt', 'McNeese',
+  'Michigan State', 'North Dakota State', 'Arkansas', "Hawai'i",
+  'North Carolina', 'VCU', 'Michigan', 'BYU',
+  "Saint Mary's", 'Texas A&M', 'Illinois', 'Penn',
+  'Georgia', 'Saint Louis', 'Gonzaga', 'Kennesaw State',
+  'Houston', 'Idaho',
+  // Round of 64 — Friday March 20
+  'Kentucky', 'Santa Clara', 'Texas Tech', 'Akron',
+  'Arizona', 'Long Island University', 'Virginia', 'Wright State',
+  'Iowa State', 'Tennessee State', 'Alabama', 'Hofstra',
+  'Villanova', 'Utah State', 'Tennessee', 'Florida',
+  'Clemson', 'Iowa', "St. John's", 'UNI',
+  'UCLA', 'UCF', 'Purdue', 'Queens',
+  'Kansas', 'Cal Baptist', 'UConn', 'Furman',
+  'Miami FL', 'Missouri',
+]);
 
 // ---------------------------------------------------------------------------
 // Tournament & venue helpers
@@ -317,17 +347,15 @@ export async function POST(request: NextRequest) {
     games = normalizeGameNames(games);
 
     // ── NCAA Tournament filter ──────────────────────────────────────────────
-    // Only surface games from the 2026 tournament window (March 17 – April 7).
-    // Excludes NIT, CBI, CIT, and regular season games that may still be in
-    // the Odds API feed.
+    // Only include games where BOTH teams are in the 2026 NCAA Tournament bracket.
+    // This excludes NIT, CBI, CIT, and any regular-season holdovers in the feed.
     if (criteria.sports.includes('basketball_ncaab')) {
-      const TOURNEY_START = new Date('2026-03-17T00:00:00Z').getTime();
-      const TOURNEY_END   = new Date('2026-04-07T23:59:59Z').getTime();
-      const ncaabGames    = games.filter(g =>
-        g.sport !== 'basketball_ncaab' ||
-        (g.commence_time >= TOURNEY_START && g.commence_time <= TOURNEY_END)
-      );
-      // Only apply filter if it leaves us with games — don't blank everything
+      const ncaabGames = games.filter(g => {
+        if (g.sport !== 'basketball_ncaab') return true; // keep non-NCAAB sports
+        const home = normalizeTeamName(g.home_team);
+        const away = normalizeTeamName(g.away_team);
+        return NCAA_TOURNAMENT_2026_TEAMS.has(home) || NCAA_TOURNAMENT_2026_TEAMS.has(away);
+      });
       if (ncaabGames.length > 0) games = ncaabGames;
     }
 
@@ -394,17 +422,31 @@ export async function POST(request: NextRequest) {
     // ---------------------------------------------------------------------------
     let reasonings: Awaited<ReturnType<typeof reasonLegs>> = [];
     try {
-      const legContexts: LegContext[] = rawLegs.map((leg) => ({
-        pick:             leg.pick,
-        eventName:        leg.event_name,
-        odds:             leg.odds,
-        market:           leg.market,
-        factors:          leg.factors,
-        edgeScore:        leg.edge,
-        confidenceScore:  leg.confidence,
-        trueProb:         leg.true_probability,
-        impliedProb:      leg.implied_probability,
-      }));
+      // Fetch injury/roster news for all teams in the parlay
+      const allTeams = rawLegs.flatMap(leg => {
+        const g = result.legs.find(l => l.event_id === leg.event_id)?.rawData?.game;
+        return g ? [g.home_team, g.away_team] : [];
+      });
+      const newsMap = await fetchMatchupNews([...new Set(allTeams)]).catch(() => ({}));
+
+      const legContexts: LegContext[] = rawLegs.map((leg) => {
+        const g = result.legs.find(l => l.event_id === leg.event_id)?.rawData?.game;
+        const recentNews = g
+          ? formatNewsForPrompt(newsMap, g.home_team, g.away_team)
+          : '';
+        return {
+          pick:             leg.pick,
+          eventName:        leg.event_name,
+          odds:             leg.odds,
+          market:           leg.market,
+          factors:          leg.factors,
+          edgeScore:        leg.edge,
+          confidenceScore:  leg.confidence,
+          trueProb:         leg.true_probability,
+          impliedProb:      leg.implied_probability,
+          recentNews:       recentNews || undefined,
+        };
+      });
 
       reasonings = await reasonLegs(legContexts);
     } catch (err) {
