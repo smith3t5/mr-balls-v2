@@ -316,6 +316,21 @@ export async function POST(request: NextRequest) {
 
     games = normalizeGameNames(games);
 
+    // ── NCAA Tournament filter ──────────────────────────────────────────────
+    // Only surface games from the 2026 tournament window (March 17 – April 7).
+    // Excludes NIT, CBI, CIT, and regular season games that may still be in
+    // the Odds API feed.
+    if (criteria.sports.includes('basketball_ncaab')) {
+      const TOURNEY_START = new Date('2026-03-17T00:00:00Z').getTime();
+      const TOURNEY_END   = new Date('2026-04-07T23:59:59Z').getTime();
+      const ncaabGames    = games.filter(g =>
+        g.sport !== 'basketball_ncaab' ||
+        (g.commence_time >= TOURNEY_START && g.commence_time <= TOURNEY_END)
+      );
+      // Only apply filter if it leaves us with games — don't blank everything
+      if (ncaabGames.length > 0) games = ncaabGames;
+    }
+
     // Weather enrichment (outdoor sports only)
     await Promise.all(
       games.map(async (game) => {
